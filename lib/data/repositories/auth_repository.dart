@@ -222,7 +222,7 @@ class AuthRepository extends GetxService {
   // Get Current User Data
   Future<Map<String, dynamic>?> getCurrentUser() async {
     try {
-      final response = await _apiService.get('/auth/me');
+      final response = await _apiService.getCurrentUser();
       if (response['success'] == true) {
         // Update stored student data
         await _storageService.saveStudentData(response['student']);

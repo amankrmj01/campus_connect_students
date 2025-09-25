@@ -63,6 +63,17 @@ class MockApiService {
     return {'success': true, 'message': 'Logged out successfully'};
   }
 
+  static Future<Map<String, dynamic>> getCurrentUser() async {
+    await _simulateDelay(500);
+
+    // TODO: Replace with actual API call
+    return {
+      'success': true,
+      'message': 'User data retrieved successfully',
+      'student': UserMockData.currentUser,
+    };
+  }
+
   static Future<Map<String, dynamic>> refreshToken(String refreshToken) async {
     await _simulateDelay(500);
 

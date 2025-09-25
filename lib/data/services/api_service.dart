@@ -668,6 +668,14 @@ class ApiService extends GetxService {
     return await post('/auth/logout');
   }
 
+  Future<Map<String, dynamic>> getCurrentUser() async {
+    if (ApiConfig.USE_MOCK_DATA) {
+      return await MockApiService.getCurrentUser();
+    }
+
+    return await get('/auth/me');
+  }
+
   // User Profile APIs
   Future<Map<String, dynamic>> getUserProfile(String userId) async {
     if (ApiConfig.USE_MOCK_DATA) {

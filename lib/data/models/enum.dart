@@ -1,4 +1,6 @@
 // lib/data/models/enums.dart
+// ignore_for_file: constant_identifier_names
+
 enum ApplicationStatus {
   APPLIED,
   UNDER_REVIEW,

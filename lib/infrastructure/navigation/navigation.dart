@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:get/get.dart';
 
 import '../../config.dart';
@@ -9,7 +8,9 @@ import 'routes.dart';
 
 class EnvironmentsBadge extends StatelessWidget {
   final Widget child;
+
   const EnvironmentsBadge({required this.child});
+
   @override
   Widget build(BuildContext context) {
     var env = ConfigEnvironments.getEnvironments()['env'];
@@ -28,8 +29,15 @@ class Nav {
   static List<GetPage> routes = [
     GetPage(
       name: Routes.HOME,
-      page: () => const HomeScreen(),
-      binding: HomeControllerBinding(),
+      page: () => const MainNavigationScreen(),
+      bindings: [
+        MainNavigationControllerBinding(),
+        HomeControllerBinding(),
+        JobsControllerBinding(),
+        ApplicationsControllerBinding(),
+        GroupsControllerBinding(),
+        ProfileControllerBinding(),
+      ],
     ),
     GetPage(
       name: Routes.DASHBOARD,

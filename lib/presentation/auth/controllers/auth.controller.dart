@@ -60,12 +60,8 @@ class AuthController extends GetxController {
         currentStudent.value = Student.fromJson(studentData);
         isLoggedIn.value = true;
 
-        // Navigate to appropriate screen based on profile completion
-        if (currentStudent.value?.profileCompleted == true) {
-          Get.offAllNamed(Routes.DASHBOARD);
-        } else {
-          Get.offAllNamed(Routes.PROFILE);
-        }
+        // Navigate to home screen if user is already logged in
+        Get.offAllNamed(Routes.HOME);
       }
     } catch (e) {
       print('Auth check error: $e');
@@ -101,12 +97,8 @@ class AuthController extends GetxController {
           colorText: Colors.white,
         );
 
-        // Navigate based on profile completion
-        if (currentStudent.value?.profileCompleted == true) {
-          Get.offAllNamed(Routes.DASHBOARD);
-        } else {
-          Get.offAllNamed(Routes.PROFILE);
-        }
+        // Navigate to home screen after successful login
+        Get.offAllNamed(Routes.HOME);
 
         // Clear form
         clearLoginForm();

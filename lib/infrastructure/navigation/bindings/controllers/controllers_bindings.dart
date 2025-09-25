@@ -1,8 +1,9 @@
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/applications.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/auth.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/dashboard.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/groups.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/home.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/jobs.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/profile.controller.binding.dart'; 
-export 'package:pconnect/infrastructure/navigation/bindings/controllers/settings.controller.binding.dart'; 
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/applications.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/auth.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/dashboard.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/groups.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/home.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/jobs.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/main_navigation.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/profile.controller.binding.dart';
+export 'package:pconnect/infrastructure/navigation/bindings/controllers/settings.controller.binding.dart';
