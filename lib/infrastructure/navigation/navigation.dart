@@ -31,5 +31,40 @@ class Nav {
       page: () => const HomeScreen(),
       binding: HomeControllerBinding(),
     ),
+    GetPage(
+      name: Routes.DASHBOARD,
+      page: () => const DashboardScreen(),
+      binding: DashboardControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.PROFILE,
+      page: () => const ProfileScreen(),
+      binding: ProfileControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.JOBS,
+      page: () => const JobsScreen(),
+      binding: JobsControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.APPLICATIONS,
+      page: () => const ApplicationsScreen(),
+      binding: ApplicationsControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.GROUPS,
+      page: () => const GroupsScreen(),
+      binding: GroupsControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.SETTINGS,
+      page: () => const SettingsScreen(),
+      binding: SettingsControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.AUTH,
+      page: () => const AuthScreen(),
+      binding: AuthControllerBinding(),
+    ),
   ];
 }
