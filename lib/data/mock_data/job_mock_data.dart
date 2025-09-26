@@ -235,7 +235,7 @@ class JobMockData {
       'description':
           'Join Netflix as a Data Analyst and help analyze viewer data to improve content recommendations and user experience across the platform.',
       'requirements': {
-        'minCgpa': 7.5,
+        'minCgpa': 9.5,
         'graduationYear': [2024, 2025],
         'departments': [
           'Computer Science',
@@ -287,7 +287,7 @@ class JobMockData {
       'description':
           'Build scalable backend systems at Spotify that serve millions of music lovers worldwide. Work with microservices, APIs, and real-time data processing.',
       'requirements': {
-        'minCgpa': 7.2,
+        'minCgpa': 9.2,
         'graduationYear': [2024, 2025],
         'departments': [
           'Computer Science',

@@ -148,7 +148,20 @@ class JobsScreen extends GetView<JobsController> {
           itemCount: filteredJobs.length,
           itemBuilder: (context, index) {
             final job = filteredJobs[index];
-            return _buildJobCard(job);
+            // Determine which tab context this job is in
+            bool isInEligibleTab = false;
+            bool isInNotEligibleTab = false;
+
+            if (jobsList == controller.eligibleJobs) {
+              isInEligibleTab = true;
+            } else if (jobsList == controller.notEligibleJobs) {
+              isInNotEligibleTab = true;
+            } else {
+              // For "All" tab, check which list the job belongs to
+              isInEligibleTab = controller.eligibleJobs.contains(job);
+            }
+
+            return _buildJobCard(job, isInEligibleTab: isInEligibleTab);
           },
         ),
       );
@@ -216,8 +229,7 @@ class JobsScreen extends GetView<JobsController> {
     );
   }
 
-  Widget _buildJobCard(Job job) {
-    final isEligible = controller.isEligibleForJob(job);
+  Widget _buildJobCard(Job job, {required bool isInEligibleTab}) {
     final hasApplied = controller.hasAlreadyApplied(job);
     final daysLeft = controller.getDaysLeft(job.applicationDeadline);
 
@@ -300,17 +312,17 @@ class JobsScreen extends GetView<JobsController> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isEligible
+                      color: isInEligibleTab
                           ? Colors.green.shade100
                           : Colors.orange.shade100,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      isEligible ? 'Eligible' : 'Not Eligible',
+                      isInEligibleTab ? 'Eligible' : 'Not Eligible',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: isEligible
+                        color: isInEligibleTab
                             ? Colors.green.shade700
                             : Colors.orange.shade700,
                       ),
@@ -389,13 +401,15 @@ class JobsScreen extends GetView<JobsController> {
                   ),
 
                   ElevatedButton(
-                    onPressed: hasApplied || daysLeft < 0 || !isEligible
+                    onPressed: hasApplied || daysLeft < 0 || !isInEligibleTab
                         ? null
                         : () => controller.applyForJob(job),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: controller.getApplicationStatusColor(
-                        job,
-                      ),
+                      backgroundColor: controller
+                          .getApplicationStatusColorForTab(
+                            job,
+                            isInEligibleTab: isInEligibleTab,
+                          ),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -406,7 +420,10 @@ class JobsScreen extends GetView<JobsController> {
                       ),
                     ),
                     child: Text(
-                      controller.getApplicationStatusText(job),
+                      controller.getApplicationStatusTextForTab(
+                        job,
+                        isInEligibleTab: isInEligibleTab,
+                      ),
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),

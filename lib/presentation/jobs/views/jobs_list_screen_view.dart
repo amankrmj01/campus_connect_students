@@ -140,15 +140,16 @@ class JobsListScreenView extends GetView<JobsController> {
           itemCount: jobs.length,
           itemBuilder: (context, index) {
             final job = jobs[index];
-            return _buildCompactJobCard(job);
+            // Determine if this job is in the eligible tab
+            final isInEligibleTab = controller.eligibleJobs.contains(job);
+            return _buildCompactJobCard(job, isInEligibleTab: isInEligibleTab);
           },
         ),
       );
     });
   }
 
-  Widget _buildCompactJobCard(Job job) {
-    final isEligible = controller.isEligibleForJob(job);
+  Widget _buildCompactJobCard(Job job, {required bool isInEligibleTab}) {
     final hasApplied = controller.hasAlreadyApplied(job);
     final daysLeft = controller.getDaysLeft(job.applicationDeadline);
 
@@ -252,17 +253,17 @@ class JobsListScreenView extends GetView<JobsController> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: isEligible
+                      color: isInEligibleTab
                           ? Colors.green.shade50
                           : Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      isEligible ? 'Eligible' : 'Not Eligible',
+                      isInEligibleTab ? 'Eligible' : 'Not Eligible',
                       style: TextStyle(
                         fontSize: 8,
                         fontWeight: FontWeight.bold,
-                        color: isEligible
+                        color: isInEligibleTab
                             ? Colors.green.shade700
                             : Colors.orange.shade700,
                       ),

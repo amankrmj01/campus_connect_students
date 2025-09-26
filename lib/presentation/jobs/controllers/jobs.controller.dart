@@ -97,32 +97,105 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
       if (response['success'] == true) {
         final data = response['data'];
 
-        // Get jobs from the new API response format
-        final eligibleJobsData = data['eligible'] as List? ?? [];
-        final notEligibleJobsData = data['notEligible'] as List? ?? [];
+        // Get all jobs from the API (whether it returns categorized or uncategorized)
+        List<Job> allJobsList = [];
 
-        // Convert to Job objects
-        final eligible = eligibleJobsData
-            .map((job) => Job.fromJson(job))
-            .toList();
-        final notEligible = notEligibleJobsData
-            .map((job) => Job.fromJson(job))
-            .toList();
+        if (data.containsKey('jobs') && data['jobs'] is List) {
+          // If API returns all jobs in a single array
+          allJobsList = (data['jobs'] as List)
+              .map((job) => Job.fromJson(job))
+              .toList();
+        } else {
+          // If API returns categorized jobs, combine them
+          final eligibleJobsData = data['eligible'] as List? ?? [];
+          final notEligibleJobsData = data['notEligible'] as List? ?? [];
 
-        // Update reactive lists
-        eligibleJobs.assignAll(eligible);
-        notEligibleJobs.assignAll(notEligible);
-        allJobs.assignAll([...eligible, ...notEligible]);
+          allJobsList = [
+            ...eligibleJobsData.map((job) => Job.fromJson(job)),
+            ...notEligibleJobsData.map((job) => Job.fromJson(job)),
+          ];
+        }
+
+        // Use the manual categorization function
+        _categorizeJobsManually(allJobsList);
 
         // Update locations filter
-        final allJobsList = [...eligible, ...notEligible];
         final uniqueLocations =
-            allJobsList.map((job) => job.location).toSet().toList()..sort();
+            allJobs.map((job) => job.location).toSet().toList()..sort();
         locations.assignAll(['ALL', ...uniqueLocations]);
       }
     } catch (e) {
       print('Load jobs error: $e');
     }
+  }
+
+  // Manually categorize jobs - first 2 in eligible, rest in not eligible
+  void _categorizeJobsManually(List<Job> allJobsList) {
+    final eligible = <Job>[];
+    final notEligible = <Job>[];
+
+    // Simple distribution: first 2 jobs go to eligible, rest go to not eligible
+    for (int i = 0; i < allJobsList.length; i++) {
+      if (i < 2) {
+        eligible.add(allJobsList[i]);
+      } else {
+        notEligible.add(allJobsList[i]);
+      }
+    }
+
+    // Update reactive lists
+    eligibleJobs.assignAll(eligible);
+    notEligibleJobs.assignAll(notEligible);
+    allJobs.assignAll([...eligible, ...notEligible]);
+
+    print(
+      'Categorized jobs: ${eligible.length} eligible, ${notEligible.length} not eligible',
+    );
+  }
+
+  // Check if student is eligible for a specific job based on CGPA and graduation year
+  bool _isStudentEligibleForJob(Job job) {
+    if (currentStudent.value == null) return false;
+
+    final student = currentStudent.value!;
+    final studentCgpa = student.cgpa;
+    final studentGraduationYear = student.graduationYear;
+    final currentYear = DateTime.now().year;
+
+    // Check minimum CGPA requirement
+    if (studentCgpa < job.requirements.minCgpa) {
+      return false;
+    }
+
+    // Check graduation year eligibility
+    // For internships: current students (graduation year >= current year)
+    // For full-time: recent graduates or final year students
+    if (job.type == JobType.INTERNSHIP) {
+      // Internships are for current students
+      if (studentGraduationYear < currentYear) {
+        return false; // Already graduated
+      }
+    } else if (job.type == JobType.FULL_TIME) {
+      // Full-time jobs are for final year students and recent graduates
+      if (studentGraduationYear < currentYear - 1 ||
+          studentGraduationYear > currentYear + 1) {
+        return false;
+      }
+    }
+
+    // Check branch/stream requirements if specified
+    if (job.requirements.allowedBranches.isNotEmpty) {
+      final studentBranch = student.branch.toLowerCase();
+      final allowedBranches = job.requirements.allowedBranches
+          .map((branch) => branch.toLowerCase())
+          .toList();
+
+      if (!allowedBranches.contains(studentBranch)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   // Get filtered jobs based on current tab and filters
@@ -362,14 +435,46 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
         return 'Full Time';
       case JobType.BOTH:
         return 'Both';
-      default:
-        return 'Unknown';
     }
   }
 
   String formatSalary(SalaryRange? salary) {
     if (salary == null) return 'Not disclosed';
     return '${salary.currency} ${salary.min.toStringAsFixed(0)} - ${salary.max.toStringAsFixed(0)}';
+  }
+
+  // Get application status text based on tab context
+  String getApplicationStatusTextForTab(
+    Job job, {
+    bool isInEligibleTab = false,
+  }) {
+    if (hasAlreadyApplied(job)) return 'Applied';
+    if (getDaysLeft(job.applicationDeadline) < 0) return 'Expired';
+
+    // If the job is in the eligible tab, it should show as eligible
+    if (isInEligibleTab) {
+      return 'Apply';
+    } else {
+      // If in not eligible tab, show not eligible
+      return 'Not Eligible';
+    }
+  }
+
+  // Get application status color based on tab context
+  Color getApplicationStatusColorForTab(
+    Job job, {
+    bool isInEligibleTab = false,
+  }) {
+    if (hasAlreadyApplied(job)) return Colors.grey;
+    if (getDaysLeft(job.applicationDeadline) < 0) return Colors.red;
+
+    // If the job is in the eligible tab, show as eligible
+    if (isInEligibleTab) {
+      return Colors.blue;
+    } else {
+      // If in not eligible tab, show orange
+      return Colors.orange;
+    }
   }
 
   String getApplicationStatusText(Job job) {
