@@ -15,7 +15,15 @@ enum UserType { STUDENT, COLLEGE_ADMIN, RECRUITER }
 
 enum RoundStatus { SELECTED, ELIMINATED, PENDING }
 
-enum QuestionType { TEXT, DROPDOWN }
+enum QuestionType {
+  TEXT,
+  MULTIPLE_CHOICE,
+  CHECKBOX,
+  DROPDOWN,
+  FILE_UPLOAD,
+  DATE,
+  NUMBER,
+}
 
 enum MessageType { TEXT, IMAGE, FILE }
 
@@ -77,17 +85,6 @@ extension ApplicationStatusExtension on ApplicationStatus {
 }
 
 extension JobTypeExtension on JobType {
-  String get displayName {
-    switch (this) {
-      case JobType.INTERNSHIP:
-        return 'Internship';
-      case JobType.FULL_TIME:
-        return 'Full Time';
-      case JobType.BOTH:
-        return 'Both';
-    }
-  }
-
   String get value {
     switch (this) {
       case JobType.INTERNSHIP:
@@ -99,8 +96,8 @@ extension JobTypeExtension on JobType {
     }
   }
 
-  static JobType fromString(String type) {
-    switch (type.toUpperCase()) {
+  static JobType fromString(String value) {
+    switch (value.toUpperCase()) {
       case 'INTERNSHIP':
         return JobType.INTERNSHIP;
       case 'FULL_TIME':

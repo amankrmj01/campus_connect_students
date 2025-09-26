@@ -1,474 +1,412 @@
 // lib/data/repositories/job_repository.dart
 import 'package:get/get.dart';
 
+import '../mock_data/job_mock_data.dart';
 import '../services/api_service.dart';
-import '../services/notification_service.dart';
+import '../services/mock_api_service.dart';
 import '../services/storage_service.dart';
 
 class JobRepository extends GetxService {
   final ApiService _apiService = Get.find<ApiService>();
   final StorageService _storageService = Get.find<StorageService>();
-  final NotificationService _notificationService =
-      Get.find<NotificationService>();
 
   // Cache keys
   static const String _jobsCacheKey = 'cache_jobs';
-  static const String _eligibleJobsCacheKey = 'cache_eligible_jobs';
+  static const String _applicationsCacheKey = 'cache_applications';
 
   // Cache duration
   static const Duration _cacheDuration = Duration(minutes: 15);
 
-  // Get Filtered Jobs (Eligible and Not Eligible)
-  Future<Map<String, dynamic>> getFilteredJobs({
-    required double cgpa,
-    required String branch,
-    required String degreeType,
-    required int graduationYear,
+  // Get jobs with student eligibility filtering
+  Future<Map<String, dynamic>> getAllJobs({
     int page = 1,
     int limit = 50,
   }) async {
     try {
-      // Try cache first
-      final cachedJobs = await _storageService
-          .getCacheWithTTL<Map<String, dynamic>>(_jobsCacheKey);
-      if (cachedJobs != null) {
-        return cachedJobs;
-      }
-
-      final response = await _apiService.get(
-        '/jobs/filtered',
-        queryParameters: {
-          'cgpa': cgpa,
-          'branch': branch,
-          'degree_type': degreeType,
-          'graduation_year': graduationYear,
-          'page': page,
-          'limit': limit,
-        },
-      );
-
-      if (response['success'] == true) {
-        // Cache the response
-        await _storageService.setCacheWithTTL(
-          _jobsCacheKey,
-          response,
-          _cacheDuration,
-        );
-
-        // Schedule deadline reminders for eligible jobs
-        await _scheduleDeadlineReminders(response['eligible'] ?? []);
-      }
-
-      return response;
-    } catch (e) {
-      print('Get filtered jobs error: $e');
-
-      // Try to return cached data even if expired
-      final cachedJobs = await _storageService.getMap(_jobsCacheKey);
-      if (cachedJobs != null) {
+      // Get student data for eligibility check
+      final studentData = await _storageService.getStudentData();
+      if (studentData == null) {
         return {
-          'success': true,
-          'eligible': cachedJobs['eligible'] ?? [],
-          'notEligible': cachedJobs['notEligible'] ?? [],
-          'cached': true,
+          'success': false,
+          'message': 'Student data not found',
+          'data': {'jobs': [], 'eligible': [], 'notEligible': []},
         };
       }
 
+      final cgpa = (studentData['cgpa'] ?? 0.0).toDouble();
+      final branch = studentData['branch'] ?? '';
+      final degreeType = studentData['degreeType'] ?? '';
+      final graduationYear =
+          studentData['graduationYear'] ?? DateTime.now().year;
+
+      if (_apiService.isUsingMockData) {
+        return await MockApiService.getJobs(
+          cgpa: cgpa,
+          branch: branch,
+          degreeType: degreeType,
+          graduationYear: graduationYear,
+          page: page,
+          limit: limit,
+        );
+      } else {
+        final response = await _apiService.get(
+          '/jobs',
+          queryParameters: {
+            'cgpa': cgpa,
+            'branch': branch,
+            'degreeType': degreeType,
+            'graduationYear': graduationYear,
+            'page': page,
+            'limit': limit,
+            'currentTimestamp': DateTime.now().millisecondsSinceEpoch,
+          },
+        );
+
+        if (response['success'] == true) {
+          // Cache the response
+          await _storageService.setCacheWithTTL(
+            _jobsCacheKey,
+            response,
+            _cacheDuration,
+          );
+          return response;
+        } else {
+          return {
+            'success': false,
+            'message': response['message'] ?? 'Failed to fetch jobs',
+            'data': {'jobs': [], 'eligible': [], 'notEligible': []},
+          };
+        }
+      }
+    } catch (e) {
+      print('Get all jobs error: $e');
       return {
         'success': false,
-        'message': 'Failed to load jobs',
-        'eligible': [],
-        'notEligible': [],
+        'message': 'Failed to fetch jobs: $e',
+        'data': {'jobs': [], 'eligible': [], 'notEligible': []},
       };
     }
   }
 
-  // Get All Jobs (Without Filtering)
-  Future<Map<String, dynamic>> getAllJobs({
-    int page = 1,
-    int limit = 20,
-    String? search,
-    String? jobType,
-    String? location,
-    double? minCgpa,
-    double? maxCgpa,
-  }) async {
-    try {
-      final queryParams = <String, dynamic>{'page': page, 'limit': limit};
-
-      if (search != null && search.isNotEmpty) {
-        queryParams['search'] = search;
-      }
-      if (jobType != null && jobType != 'ALL') {
-        queryParams['job_type'] = jobType;
-      }
-      if (location != null && location != 'ALL') {
-        queryParams['location'] = location;
-      }
-      if (minCgpa != null) {
-        queryParams['min_cgpa'] = minCgpa;
-      }
-      if (maxCgpa != null) {
-        queryParams['max_cgpa'] = maxCgpa;
-      }
-
-      final response = await _apiService.get(
-        '/jobs',
-        queryParameters: queryParams,
-      );
-      return response;
-    } catch (e) {
-      print('Get all jobs error: $e');
-      return {'success': false, 'message': 'Failed to load jobs'};
-    }
-  }
-
-  // Get Job Details
-  Future<Map<String, dynamic>> getJobDetails(String jobId) async {
-    try {
-      final response = await _apiService.get('/jobs/$jobId');
-      return response;
-    } catch (e) {
-      print('Get job details error: $e');
-      return {'success': false, 'message': 'Failed to load job details'};
-    }
-  }
-
-  // Apply for Job
-  Future<Map<String, dynamic>> applyForJob(
-    String jobId,
+  // Submit job application
+  Future<Map<String, dynamic>> submitJobApplication(
     Map<String, dynamic> applicationData,
   ) async {
     try {
-      final response = await _apiService.post(
-        '/jobs/$jobId/apply',
-        data: applicationData,
-      );
-
-      if (response['success'] == true) {
-        // Clear jobs cache to refresh applied status
-        await _clearJobsCache();
-
-        // Show success notification
-        await _notificationService.showNotification(
-          id: 'job_applied_$jobId'.hashCode,
-          title: 'Application Submitted!',
-          body: 'Your job application has been submitted successfully',
+      if (_apiService.isUsingMockData) {
+        return await MockApiService.submitJobApplication(
+          jobId: applicationData['jobId'],
+          candidateId: applicationData['candidateId'],
+          answers: List<Map<String, dynamic>>.from(
+            applicationData['answers'] ?? [],
+          ),
+        );
+      } else {
+        final response = await _apiService.post(
+          '/jobs/applications',
+          data: applicationData,
         );
 
-        // Get job details for notification
-        final jobDetails = response['job'];
-        if (jobDetails != null) {
-          await _notificationService.showApplicationUpdate(
-            applicationId: response['application_id'] ?? '',
-            companyName: jobDetails['company_name'] ?? 'Company',
-            status: 'Application Submitted',
-          );
+        if (response['success'] == true) {
+          // Clear applications cache to refresh data
+          await _storageService.removeCache(_applicationsCacheKey);
+          return response;
+        } else {
+          return {
+            'success': false,
+            'message': response['message'] ?? 'Failed to submit application',
+          };
         }
       }
-
-      return response;
     } catch (e) {
-      print('Apply for job error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to apply for job',
-      };
+      print('Submit job application error: $e');
+      return {'success': false, 'message': 'Failed to submit application: $e'};
     }
   }
 
-  // Get My Applications
-  Future<Map<String, dynamic>> getMyApplications({
+  // Get student applications with status
+  Future<Map<String, dynamic>> getStudentApplications({
+    required String studentId,
     int page = 1,
-    int limit = 20,
+    int limit = 50,
     String? status,
   }) async {
     try {
-      final queryParams = <String, dynamic>{'page': page, 'limit': limit};
-
-      if (status != null && status.isNotEmpty) {
-        queryParams['status'] = status;
-      }
-
-      final response = await _apiService.get(
-        '/jobs/my-applications',
-        queryParameters: queryParams,
-      );
-      return response;
-    } catch (e) {
-      print('Get my applications error: $e');
-      return {'success': false, 'message': 'Failed to load applications'};
-    }
-  }
-
-  // Withdraw Application
-  Future<Map<String, dynamic>> withdrawApplication(String applicationId) async {
-    try {
-      final response = await _apiService.put(
-        '/applications/$applicationId/withdraw',
-      );
-
-      if (response['success'] == true) {
-        // Clear jobs cache to refresh status
-        await _clearJobsCache();
-
-        // Show notification
-        await _notificationService.showNotification(
-          id: 'application_withdrawn_$applicationId'.hashCode,
-          title: 'Application Withdrawn',
-          body: 'Your job application has been withdrawn',
+      if (_apiService.isUsingMockData) {
+        return await MockApiService.getStudentApplications(
+          studentId: studentId,
+          page: page,
+          limit: limit,
+          status: status,
         );
-      }
+      } else {
+        // Try cache first
+        final cacheKey = '${_applicationsCacheKey}_$studentId';
+        final cachedApplications = await _storageService
+            .getCacheWithTTL<Map<String, dynamic>>(cacheKey);
+        if (cachedApplications != null) {
+          return cachedApplications;
+        }
 
-      return response;
-    } catch (e) {
-      print('Withdraw application error: $e');
-      return {'success': false, 'message': 'Failed to withdraw application'};
-    }
-  }
+        final queryParams = <String, dynamic>{'page': page, 'limit': limit};
+        if (status != null) queryParams['status'] = status;
 
-  // Get Application Details
-  Future<Map<String, dynamic>> getApplicationDetails(
-    String applicationId,
-  ) async {
-    try {
-      final response = await _apiService.get('/applications/$applicationId');
-      return response;
-    } catch (e) {
-      print('Get application details error: $e');
-      return {
-        'success': false,
-        'message': 'Failed to load application details',
-      };
-    }
-  }
-
-  // Get Job Categories
-  Future<Map<String, dynamic>> getJobCategories() async {
-    try {
-      final response = await _apiService.get('/jobs/categories');
-      return response;
-    } catch (e) {
-      print('Get job categories error: $e');
-      return {'success': false, 'message': 'Failed to load job categories'};
-    }
-  }
-
-  // Get Job Locations
-  Future<Map<String, dynamic>> getJobLocations() async {
-    try {
-      final response = await _apiService.get('/jobs/locations');
-      return response;
-    } catch (e) {
-      print('Get job locations error: $e');
-      return {'success': false, 'message': 'Failed to load job locations'};
-    }
-  }
-
-  // Save Job (Bookmark)
-  Future<Map<String, dynamic>> saveJob(String jobId) async {
-    try {
-      final response = await _apiService.post('/jobs/$jobId/save');
-
-      if (response['success'] == true) {
-        await _notificationService.showNotification(
-          id: 'job_saved_$jobId'.hashCode,
-          title: 'Job Saved',
-          body: 'Job has been added to your saved list',
+        final response = await _apiService.get(
+          '/students/$studentId/applications',
+          queryParameters: queryParams,
         );
-      }
 
-      return response;
-    } catch (e) {
-      print('Save job error: $e');
-      return {'success': false, 'message': 'Failed to save job'};
-    }
-  }
-
-  // Unsave Job (Remove Bookmark)
-  Future<Map<String, dynamic>> unsaveJob(String jobId) async {
-    try {
-      final response = await _apiService.delete('/jobs/$jobId/save');
-      return response;
-    } catch (e) {
-      print('Unsave job error: $e');
-      return {'success': false, 'message': 'Failed to unsave job'};
-    }
-  }
-
-  // Get Saved Jobs
-  Future<Map<String, dynamic>> getSavedJobs({
-    int page = 1,
-    int limit = 20,
-  }) async {
-    try {
-      final response = await _apiService.get(
-        '/jobs/saved',
-        queryParameters: {'page': page, 'limit': limit},
-      );
-
-      return response;
-    } catch (e) {
-      print('Get saved jobs error: $e');
-      return {'success': false, 'message': 'Failed to load saved jobs'};
-    }
-  }
-
-  // Get Job Recommendations
-  Future<Map<String, dynamic>> getJobRecommendations({int limit = 10}) async {
-    try {
-      final response = await _apiService.get(
-        '/jobs/recommendations',
-        queryParameters: {'limit': limit},
-      );
-
-      return response;
-    } catch (e) {
-      print('Get job recommendations error: $e');
-      return {
-        'success': false,
-        'message': 'Failed to load job recommendations',
-      };
-    }
-  }
-
-  // Get Company Jobs
-  Future<Map<String, dynamic>> getCompanyJobs(
-    String companyName, {
-    int page = 1,
-    int limit = 20,
-  }) async {
-    try {
-      final response = await _apiService.get(
-        '/jobs/company/$companyName',
-        queryParameters: {'page': page, 'limit': limit},
-      );
-
-      return response;
-    } catch (e) {
-      print('Get company jobs error: $e');
-      return {'success': false, 'message': 'Failed to load company jobs'};
-    }
-  }
-
-  // Get Similar Jobs
-  Future<Map<String, dynamic>> getSimilarJobs(
-    String jobId, {
-    int limit = 5,
-  }) async {
-    try {
-      final response = await _apiService.get(
-        '/jobs/$jobId/similar',
-        queryParameters: {'limit': limit},
-      );
-
-      return response;
-    } catch (e) {
-      print('Get similar jobs error: $e');
-      return {'success': false, 'message': 'Failed to load similar jobs'};
-    }
-  }
-
-  // Report Job
-  Future<Map<String, dynamic>> reportJob(
-    String jobId,
-    String reason,
-    String? description,
-  ) async {
-    try {
-      final response = await _apiService.post(
-        '/jobs/$jobId/report',
-        data: {'reason': reason, 'description': description},
-      );
-
-      return response;
-    } catch (e) {
-      print('Report job error: $e');
-      return {'success': false, 'message': 'Failed to report job'};
-    }
-  }
-
-  // Get Application Statistics
-  Future<Map<String, dynamic>> getApplicationStatistics() async {
-    try {
-      final response = await _apiService.get('/jobs/application-stats');
-      return response;
-    } catch (e) {
-      print('Get application statistics error: $e');
-      return {
-        'success': false,
-        'message': 'Failed to load application statistics',
-      };
-    }
-  }
-
-  // Search Jobs
-  Future<Map<String, dynamic>> searchJobs(
-    String query, {
-    int page = 1,
-    int limit = 20,
-    Map<String, dynamic>? filters,
-  }) async {
-    try {
-      final queryParams = <String, dynamic>{
-        'q': query,
-        'page': page,
-        'limit': limit,
-      };
-
-      if (filters != null) {
-        queryParams.addAll(filters);
-      }
-
-      final response = await _apiService.get(
-        '/jobs/search',
-        queryParameters: queryParams,
-      );
-      return response;
-    } catch (e) {
-      print('Search jobs error: $e');
-      return {'success': false, 'message': 'Search failed'};
-    }
-  }
-
-  // Schedule deadline reminders for eligible jobs
-  Future<void> _scheduleDeadlineReminders(List<dynamic> eligibleJobs) async {
-    try {
-      for (final jobData in eligibleJobs) {
-        final job = jobData as Map<String, dynamic>;
-        final deadlineStr = job['application_deadline'];
-        if (deadlineStr != null) {
-          final deadline = DateTime.parse(deadlineStr);
-          await _notificationService.scheduleApplicationDeadlineReminder(
-            jobId: job['job_id'] ?? '',
-            companyName: job['company_name'] ?? '',
-            jobTitle: job['title'] ?? '',
-            deadline: deadline,
+        if (response['success'] == true) {
+          // Cache the response
+          await _storageService.setCacheWithTTL(
+            cacheKey,
+            response,
+            _cacheDuration,
           );
+          return response;
+        } else {
+          return {
+            'success': false,
+            'message': response['message'] ?? 'Failed to fetch applications',
+            'data': {'applications': []},
+          };
         }
       }
     } catch (e) {
-      print('Schedule deadline reminders error: $e');
+      print('Get student applications error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch applications: $e',
+        'data': {'applications': []},
+      };
     }
   }
 
-  // Clear jobs cache
-  Future<void> _clearJobsCache() async {
-    await _storageService.setString(_jobsCacheKey, '');
-    await _storageService.setString(_eligibleJobsCacheKey, '');
+  // Get job application questions
+  Future<Map<String, dynamic>> getJobApplicationQuestions(String jobId) async {
+    try {
+      if (_apiService.isUsingMockData) {
+        final jobData = JobMockData.getJobById(jobId);
+        final customForm = jobData['customForm'] as Map<String, dynamic>? ?? {};
+        final questions = customForm['questions'] as List? ?? [];
+
+        return {
+          'success': true,
+          'message': 'Application questions fetched successfully',
+          'data': {
+            'questions': questions,
+            'additionalLinks': customForm['additionalLinks'] ?? [],
+            'instructions': customForm['instructions'] ?? '',
+          },
+        };
+      } else {
+        final response = await _apiService.get('/jobs/$jobId/questions');
+        return response;
+      }
+    } catch (e) {
+      print('Get job application questions error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch application questions: $e',
+        'data': {'questions': []},
+      };
+    }
   }
 
-  // Clear all job cache
+  // Get job by ID
+  Future<Map<String, dynamic>> getJobById(String jobId) async {
+    try {
+      if (_apiService.isUsingMockData) {
+        final jobData = JobMockData.getJobById(jobId);
+        return {
+          'success': true,
+          'message': 'Job fetched successfully',
+          'data': {'job': jobData},
+        };
+      } else {
+        final response = await _apiService.get('/jobs/$jobId');
+        return response;
+      }
+    } catch (e) {
+      print('Get job by ID error: $e');
+      return {'success': false, 'message': 'Failed to fetch job details: $e'};
+    }
+  }
+
+  // Update application status
+  Future<Map<String, dynamic>> updateApplicationStatus({
+    required String applicationId,
+    required String status,
+  }) async {
+    try {
+      if (_apiService.isUsingMockData) {
+        return await MockApiService.updateApplicationStatus(
+          applicationId: applicationId,
+          status: status,
+        );
+      } else {
+        final response = await _apiService.put(
+          '/applications/$applicationId/status',
+          data: {'status': status},
+        );
+
+        if (response['success'] == true) {
+          // Clear applications cache to refresh data
+          await _storageService.removeCache(_applicationsCacheKey);
+        }
+
+        return response;
+      }
+    } catch (e) {
+      print('Update application status error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to update application status: $e',
+      };
+    }
+  }
+
+  // Withdraw application
+  Future<Map<String, dynamic>> withdrawApplication(String applicationId) async {
+    try {
+      if (_apiService.isUsingMockData) {
+        return await MockApiService.updateApplicationStatus(
+          applicationId: applicationId,
+          status: 'WITHDRAWN',
+        );
+      } else {
+        final response = await _apiService.delete(
+          '/applications/$applicationId',
+        );
+
+        if (response['success'] == true) {
+          // Clear applications cache to refresh data
+          await _storageService.removeCache(_applicationsCacheKey);
+        }
+
+        return response;
+      }
+    } catch (e) {
+      print('Withdraw application error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to withdraw application: $e',
+      };
+    }
+  }
+
+  // Search jobs
+  Future<Map<String, dynamic>> searchJobs({
+    required String query,
+    String? jobType,
+    String? location,
+    double? minCgpa,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    try {
+      if (_apiService.isUsingMockData) {
+        // Mock search implementation
+        final allJobs = JobMockData.getAllJobs();
+        final filteredJobs = allJobs.where((job) {
+          final title = job['title']?.toString().toLowerCase() ?? '';
+          final company = job['companyName']?.toString().toLowerCase() ?? '';
+          final jobLocation = job['location']?.toString().toLowerCase() ?? '';
+          final searchQuery = query.toLowerCase();
+
+          return title.contains(searchQuery) ||
+              company.contains(searchQuery) ||
+              jobLocation.contains(searchQuery);
+        }).toList();
+
+        return {
+          'success': true,
+          'message': 'Jobs searched successfully',
+          'data': {
+            'jobs': filteredJobs,
+            'pagination': {
+              'currentPage': page,
+              'totalPages': 1,
+              'totalItems': filteredJobs.length,
+            },
+          },
+        };
+      } else {
+        final queryParams = <String, dynamic>{
+          'q': query,
+          'page': page,
+          'limit': limit,
+        };
+
+        if (jobType != null) queryParams['job_type'] = jobType;
+        if (location != null) queryParams['location'] = location;
+        if (minCgpa != null) queryParams['min_cgpa'] = minCgpa;
+
+        final response = await _apiService.get(
+          '/jobs/search',
+          queryParameters: queryParams,
+        );
+        return response;
+      }
+    } catch (e) {
+      print('Search jobs error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to search jobs: $e',
+        'data': {'jobs': []},
+      };
+    }
+  }
+
+  // Get job filters
+  Future<Map<String, dynamic>> getJobFilters() async {
+    try {
+      if (_apiService.isUsingMockData) {
+        return {
+          'success': true,
+          'message': 'Filters fetched successfully',
+          'data': {
+            'jobTypes': ['INTERNSHIP', 'FULL_TIME', 'BOTH'],
+            'locations': ['Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Pune'],
+            'companies': ['TCS', 'Infosys', 'Wipro', 'Accenture', 'Cognizant'],
+          },
+        };
+      } else {
+        final response = await _apiService.get('/jobs/filters');
+        return response;
+      }
+    } catch (e) {
+      print('Get job filters error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch filters: $e',
+        'data': {'jobTypes': [], 'locations': [], 'companies': []},
+      };
+    }
+  }
+
+  // Clear cache
   Future<void> clearJobsCache() async {
-    await _clearJobsCache();
+    try {
+      await _storageService.removeCache(_jobsCacheKey);
+      await _storageService.removeCache(_applicationsCacheKey);
+    } catch (e) {
+      print('Clear cache error: $e');
+    }
   }
 
   // Get cached jobs
   Future<Map<String, dynamic>?> getCachedJobs() async {
     return await _storageService.getCacheWithTTL<Map<String, dynamic>>(
       _jobsCacheKey,
+    );
+  }
+
+  // Get cached applications
+  Future<Map<String, dynamic>?> getCachedApplications(String studentId) async {
+    final cacheKey = '${_applicationsCacheKey}_$studentId';
+    return await _storageService.getCacheWithTTL<Map<String, dynamic>>(
+      cacheKey,
     );
   }
 }

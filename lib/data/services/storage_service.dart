@@ -23,6 +23,10 @@ class StorageService extends GetxService {
   static const String _languageKey = 'selected_language';
   static const String _biometricKey = 'biometric_enabled';
 
+  // Cache Keys
+  static const String _cachePrefix = 'cache_';
+  static const String _cacheTimestampSuffix = '_timestamp';
+
   // Token Management
   Future<void> saveToken(String token) async {
     await _box.write(_tokenKey, token);
@@ -51,145 +55,165 @@ class StorageService extends GetxService {
   }
 
   Future<Map<String, dynamic>?> getStudentData() async {
-    return _box.read(_studentDataKey);
+    final data = _box.read(_studentDataKey);
+    return data != null ? Map<String, dynamic>.from(data) : null;
   }
 
   Future<void> clearStudentData() async {
     await _box.remove(_studentDataKey);
   }
 
+  // Cache Management with TTL
+  Future<void> setCacheWithTTL<T>(String key, T data, Duration ttl) async {
+    final cacheKey = '$_cachePrefix$key';
+    final timestampKey = '$cacheKey$_cacheTimestampSuffix';
+    final expirationTime = DateTime.now().add(ttl).millisecondsSinceEpoch;
+
+    await _box.write(cacheKey, data);
+    await _box.write(timestampKey, expirationTime);
+  }
+
+  Future<T?> getCacheWithTTL<T>(String key) async {
+    final cacheKey = '$_cachePrefix$key';
+    final timestampKey = '$cacheKey$_cacheTimestampSuffix';
+
+    final expirationTime = _box.read<int>(timestampKey);
+    if (expirationTime == null) {
+      return null;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now > expirationTime) {
+      // Cache expired, remove it
+      await _box.remove(cacheKey);
+      await _box.remove(timestampKey);
+      return null;
+    }
+
+    final cachedData = _box.read<T>(cacheKey);
+    return cachedData;
+  }
+
+  Future<void> removeCache(String key) async {
+    final cacheKey = '$_cachePrefix$key';
+    final timestampKey = '$cacheKey$_cacheTimestampSuffix';
+
+    await _box.remove(cacheKey);
+    await _box.remove(timestampKey);
+  }
+
+  Future<void> clearAllCache() async {
+    final keys = _box.getKeys();
+    for (final key in keys) {
+      if (key.toString().startsWith(_cachePrefix)) {
+        await _box.remove(key);
+      }
+    }
+  }
+
   // Settings Management
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    await _box.write(_notificationsEnabledKey, enabled);
+  }
+
+  bool getNotificationsEnabled() {
+    return _box.read(_notificationsEnabledKey) ?? true;
+  }
+
+  Future<void> setDarkModeEnabled(bool enabled) async {
+    await _box.write(_darkModeKey, enabled);
+  }
+
+  bool getDarkModeEnabled() {
+    return _box.read(_darkModeKey) ?? false;
+  }
+
+  Future<void> setLanguage(String language) async {
+    await _box.write(_languageKey, language);
+  }
+
+  String getLanguage() {
+    return _box.read(_languageKey) ?? 'en';
+  }
+
+  Future<void> setBiometricEnabled(bool enabled) async {
+    await _box.write(_biometricKey, enabled);
+  }
+
+  bool getBiometricEnabled() {
+    return _box.read(_biometricKey) ?? false;
+  }
+
+  // Generic boolean methods
   Future<void> setBool(String key, bool value) async {
     await _box.write(key, value);
   }
 
-  Future<bool?> getBool(String key) async {
-    return _box.read(key);
+  bool? getBool(String key) {
+    return _box.read<bool>(key);
   }
 
+  // Generic string methods
   Future<void> setString(String key, String value) async {
     await _box.write(key, value);
   }
 
-  Future<String?> getString(String key) async {
-    return _box.read(key);
+  String? getString(String key) {
+    return _box.read<String>(key);
   }
 
+  // Generic int methods
   Future<void> setInt(String key, int value) async {
     await _box.write(key, value);
   }
 
-  Future<int?> getInt(String key) async {
-    return _box.read(key);
+  int? getInt(String key) {
+    return _box.read<int>(key);
   }
 
+  // Generic double methods
   Future<void> setDouble(String key, double value) async {
     await _box.write(key, value);
   }
 
-  Future<double?> getDouble(String key) async {
-    return _box.read(key);
+  double? getDouble(String key) {
+    return _box.read<double>(key);
   }
 
-  Future<void> setMap(String key, Map<String, dynamic> value) async {
+  // Generic list methods
+  Future<void> setStringList(String key, List<String> value) async {
     await _box.write(key, value);
   }
 
-  Future<Map<String, dynamic>?> getMap(String key) async {
-    return _box.read(key);
+  List<String>? getStringList(String key) {
+    final list = _box.read<List>(key);
+    return list?.cast<String>();
   }
 
-  Future<void> setList(String key, List<dynamic> value) async {
+  // Generic storage methods
+  Future<void> write<T>(String key, T value) async {
     await _box.write(key, value);
   }
 
-  Future<List<dynamic>?> getList(String key) async {
-    return _box.read(key);
+  T? read<T>(String key) {
+    return _box.read<T>(key);
   }
 
-  // Cache Management
-  Future<void> setCacheWithTTL(String key, dynamic value, Duration ttl) async {
-    final expiry = DateTime.now().add(ttl).millisecondsSinceEpoch;
-    await _box.write(key, {'data': value, 'expiry': expiry});
+  Future<void> remove(String key) async {
+    await _box.remove(key);
   }
 
-  Future<T?> getCacheWithTTL<T>(String key) async {
-    final cached = _box.read(key);
-    if (cached == null) return null;
-
-    final expiry = cached['expiry'] as int?;
-    if (expiry == null || DateTime.now().millisecondsSinceEpoch > expiry) {
-      await _box.remove(key);
-      return null;
-    }
-
-    return cached['data'] as T?;
-  }
-
-  // Clear Specific Data
-  Future<void> clearCache() async {
-    final keys = _box.getKeys().where(
-      (key) =>
-          key.toString().startsWith('cache_') ||
-          key.toString().startsWith('temp_'),
-    );
-
-    for (final key in keys) {
-      await _box.remove(key);
-    }
-  }
-
-  Future<void> clearSettings() async {
-    await _box.remove(_notificationsEnabledKey);
-    await _box.remove(_darkModeKey);
-    await _box.remove(_languageKey);
-    await _box.remove(_biometricKey);
-  }
-
-  // Clear All Data
   Future<void> clearAll() async {
     await _box.erase();
   }
 
-  // Check if data exists
-  bool hasKey(String key) {
+  // Check if key exists
+  bool hasData(String key) {
     return _box.hasData(key);
   }
 
   // Get all keys
-  Iterable<String> getAllKeys() {
-    return _box.getKeys().cast<String>();
-  }
-
-  // Get storage size (approximate)
-  int getStorageSize() {
-    return _box.getKeys().length;
-  }
-
-  // Backup data to JSON
-  Map<String, dynamic> exportData() {
-    final data = <String, dynamic>{};
-    for (final key in _box.getKeys()) {
-      data[key.toString()] = _box.read(key.toString());
-    }
-    return data;
-  }
-
-  // Import data from JSON
-  Future<void> importData(Map<String, dynamic> data) async {
-    for (final entry in data.entries) {
-      await _box.write(entry.key, entry.value);
-    }
-  }
-
-  // Listen to storage changes
-  void listenKey(String key, Function(dynamic) callback) {
-    _box.listenKey(key, callback);
-  }
-
-  // Remove listener
-  void removeListener() {
-    // GetStorage doesn't provide removeListener method
-    // This is handled automatically when the service is disposed
+  Iterable<dynamic> getKeys() {
+    return _box.getKeys();
   }
 }

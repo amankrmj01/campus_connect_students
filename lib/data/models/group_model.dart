@@ -35,7 +35,11 @@ class RecruitmentGroup {
       groupName: json['groupName'] ?? '',
       companyName: json['companyName'] ?? '',
       jobTitle: json['jobTitle'] ?? '',
-      participants: List<String>.from(json['participants'] ?? []),
+      participants:
+          (json['participants'] as List?)
+              ?.map((item) => item.toString())
+              .toList() ??
+          [],
       isActive: json['isActive'] ?? true,
       currentRound: json['currentRound'] ?? 'Round 1',
       createdAt: DateTime.parse(

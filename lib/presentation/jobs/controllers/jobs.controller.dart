@@ -6,18 +6,18 @@ import '../../../data/models/enum.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/models/student_model.dart';
 import '../../../data/repositories/job_repository.dart';
-import '../../../data/repositories/profile_repository.dart';
+import '../../../data/services/api_service.dart';
 import '../../../data/services/storage_service.dart';
 import '../../../infrastructure/navigation/routes.dart';
 
 class JobsController extends GetxController with GetTickerProviderStateMixin {
   final JobRepository _jobRepository = Get.find<JobRepository>();
-  final ProfileRepository _profileRepository = Get.find<ProfileRepository>();
   final StorageService _storageService = Get.find<StorageService>();
 
   // Reactive variables
   final RxList<Job> eligibleJobs = <Job>[].obs;
   final RxList<Job> notEligibleJobs = <Job>[].obs;
+  final RxList<Job> allJobs = <Job>[].obs;
   final RxList<Job> filteredJobs = <Job>[].obs;
   final Rx<Student?> currentStudent = Rx<Student?>(null);
   final RxBool isLoading = true.obs;
@@ -45,7 +45,7 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
   @override
   void onInit() {
     super.onInit();
-    tabController = TabController(length: 2, vsync: this);
+    tabController = TabController(length: 3, vsync: this);
     initializeJobs();
     setupSearchListener();
   }
@@ -61,9 +61,9 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
   void initializeJobs() async {
     try {
       isLoading.value = true;
-      await loadCurrentStudent();
+      await loadStudentData();
       await loadJobs();
-      setupFilters();
+      filterJobs();
     } catch (e) {
       print('Initialize jobs error: $e');
       Get.snackbar(
@@ -78,201 +78,91 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
     }
   }
 
-  // Load current student data
-  Future<void> loadCurrentStudent() async {
+  // Load student data
+  Future<void> loadStudentData() async {
     try {
       final studentData = await _storageService.getStudentData();
       if (studentData != null) {
         currentStudent.value = Student.fromJson(studentData);
       }
     } catch (e) {
-      print('Load current student error: $e');
+      print('Load student data error: $e');
     }
   }
 
-  // Load jobs from API
+  // Load jobs
   Future<void> loadJobs() async {
     try {
-      if (currentStudent.value == null) return;
-
-      final student = currentStudent.value!;
-      final response = await _jobRepository.getFilteredJobs(
-        cgpa: student.academicDetails?.cgpa ?? 0.0,
-        branch: student.branch,
-        degreeType: student.degreeType,
-        graduationYear:
-            student.academicDetails?.graduationYear ?? DateTime.now().year,
-      );
-
+      final response = await _jobRepository.getAllJobs();
       if (response['success'] == true) {
-        final eligible = (response['eligible'] as List)
+        final data = response['data'];
+
+        // Get jobs from the new API response format
+        final eligibleJobsData = data['eligible'] as List? ?? [];
+        final notEligibleJobsData = data['notEligible'] as List? ?? [];
+
+        // Convert to Job objects
+        final eligible = eligibleJobsData
             .map((job) => Job.fromJson(job))
             .toList();
-        final notEligible = (response['notEligible'] as List)
+        final notEligible = notEligibleJobsData
             .map((job) => Job.fromJson(job))
             .toList();
 
+        // Update reactive lists
         eligibleJobs.assignAll(eligible);
         notEligibleJobs.assignAll(notEligible);
+        allJobs.assignAll([...eligible, ...notEligible]);
 
-        applyFilters();
+        // Update locations filter
+        final allJobsList = [...eligible, ...notEligible];
+        final uniqueLocations =
+            allJobsList.map((job) => job.location).toSet().toList()..sort();
+        locations.assignAll(['ALL', ...uniqueLocations]);
       }
     } catch (e) {
       print('Load jobs error: $e');
     }
   }
 
-  // Setup filters based on loaded jobs
-  void setupFilters() {
-    final allJobs = [...eligibleJobs, ...notEligibleJobs];
-    final uniqueLocations = allJobs.map((job) => job.location).toSet().toList();
-    uniqueLocations.sort();
-    locations.assignAll(['ALL', ...uniqueLocations]);
-  }
-
-  // Setup search listener
-  void setupSearchListener() {
-    searchController.addListener(() {
-      searchQuery.value = searchController.text;
-      applyFilters();
-    });
-  }
-
-  // Apply filters to jobs
-  void applyFilters() {
-    List<Job> jobsToFilter = showEligibleOnly.value
-        ? eligibleJobs
-        : [...eligibleJobs, ...notEligibleJobs];
-
-    // Apply search filter
-    if (searchQuery.value.isNotEmpty) {
-      jobsToFilter = jobsToFilter
-          .where(
-            (job) =>
-                job.title.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ||
-                job.companyName.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ) ||
-                job.description.toLowerCase().contains(
-                  searchQuery.value.toLowerCase(),
-                ),
-          )
-          .toList();
-    }
-
-    // Apply job type filter
-    if (selectedJobType.value != 'ALL') {
-      jobsToFilter = jobsToFilter
-          .where((job) => job.type.value == selectedJobType.value)
-          .toList();
-    }
-
-    // Apply location filter
-    if (selectedLocation.value != 'ALL') {
-      jobsToFilter = jobsToFilter
-          .where((job) => job.location == selectedLocation.value)
-          .toList();
-    }
-
-    // Apply CGPA filter
-    jobsToFilter = jobsToFilter
-        .where(
-          (job) =>
-              job.requirements.minCgpa >= minCgpaFilter.value &&
-              job.requirements.minCgpa <= maxCgpaFilter.value,
-        )
-        .toList();
-
-    // Sort by application deadline (closest first)
-    jobsToFilter.sort(
-      (a, b) => a.applicationDeadline.compareTo(b.applicationDeadline),
-    );
-
-    filteredJobs.assignAll(jobsToFilter);
-  }
-
-  // Toggle between eligible and all jobs
-  void toggleEligibleOnly() {
-    showEligibleOnly.value = !showEligibleOnly.value;
-    applyFilters();
-  }
-
-  // Set job type filter
-  void setJobTypeFilter(String type) {
-    selectedJobType.value = type;
-    applyFilters();
-  }
-
-  // Set location filter
-  void setLocationFilter(String location) {
-    selectedLocation.value = location;
-    applyFilters();
-  }
-
-  // Set CGPA range filter
-  void setCgpaRangeFilter(double min, double max) {
-    minCgpaFilter.value = min;
-    maxCgpaFilter.value = max;
-    applyFilters();
-  }
-
-  // Clear all filters
-  void clearFilters() {
-    searchController.clear();
-    selectedJobType.value = 'ALL';
-    selectedLocation.value = 'ALL';
-    minCgpaFilter.value = 0.0;
-    maxCgpaFilter.value = 10.0;
-    showEligibleOnly.value = true;
-    applyFilters();
-  }
-
-  // Refresh jobs
-  Future<void> refreshJobs() async {
-    try {
-      isRefreshing.value = true;
-      await loadJobs();
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to refresh jobs',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
-    } finally {
-      isRefreshing.value = false;
-    }
-  }
-
-  // Navigate to job details
-  void goToJobDetails(Job job) {
-    Get.toNamed(Routes.JOBS + '/details', arguments: {'job': job});
-  }
-
-  // Apply for job
-  Future<void> applyForJob(Job job) async {
-    try {
-      // Check if profile is complete
-      if (currentStudent.value?.profileCompleted != true) {
-        Get.snackbar(
-          'Profile Incomplete',
-          'Please complete your profile before applying',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-        );
-        Get.toNamed(Routes.PROFILE);
-        return;
+  // Get filtered jobs based on current tab and filters
+  List<Job> getFilteredJobs(RxList<Job> jobsList) {
+    return jobsList.where((job) {
+      // Search filter
+      if (searchQuery.value.isNotEmpty) {
+        final query = searchQuery.value.toLowerCase();
+        if (!job.title.toLowerCase().contains(query) &&
+            !job.companyName.toLowerCase().contains(query) &&
+            !job.location.toLowerCase().contains(query)) {
+          return false;
+        }
       }
 
-      // Check application deadline
-      if (job.applicationDeadline.isBefore(DateTime.now())) {
+      // Job type filter
+      if (selectedJobType.value != 'ALL') {
+        if (job.type.value != selectedJobType.value) {
+          return false;
+        }
+      }
+
+      // Location filter
+      if (selectedLocation.value != 'ALL') {
+        if (job.location != selectedLocation.value) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  // Apply for job with conditional flow
+  Future<void> applyForJob(Job job) async {
+    try {
+      if (currentStudent.value == null) {
         Get.snackbar(
-          'Deadline Passed',
-          'Application deadline has passed',
+          'Error',
+          'Please login to apply for jobs',
           snackPosition: SnackPosition.BOTTOM,
           backgroundColor: Colors.red,
           colorText: Colors.white,
@@ -280,22 +170,178 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
         return;
       }
 
-      // Navigate to application form
-      Get.toNamed(Routes.JOBS + '/apply', arguments: {'job': job});
+      // Check if student is eligible
+      if (!isStudentEligible(job)) {
+        Get.snackbar(
+          'Not Eligible',
+          'You are not eligible for this job based on the requirements',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+        return;
+      }
+
+      // Check if job has additional application questions
+      final hasQuestions = job.customForm.questions.isNotEmpty;
+
+      if (hasQuestions) {
+        // Navigate to application form if job has additional questions
+        Get.toNamed(Routes.JOB_APPLICATION, arguments: {'job': job});
+      } else {
+        // Direct apply if no additional questions
+        await _directApply(job);
+      }
     } catch (e) {
       print('Apply for job error: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to apply for job. Please try again.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
     }
   }
 
-  // Check if student is eligible for job
-  bool isEligibleForJob(Job job) {
-    return eligibleJobs.any((eligibleJob) => eligibleJob.jobId == job.jobId);
+  // Direct apply without additional questions
+  Future<void> _directApply(Job job) async {
+    try {
+      // Show loading dialog
+      Get.dialog(
+        const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Submitting application...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+        barrierDismissible: false,
+      );
+
+      final applicationData = {
+        'jobId': job.jobId,
+        'candidateId':
+            currentStudent.value?.studentId ??
+            currentStudent.value?.userId ??
+            '',
+        'answers': <Map<String, dynamic>>[], // No additional questions
+        'appliedAt': DateTime.now().toIso8601String(),
+      };
+
+      // Submit application
+      final response = await _submitApplication(applicationData);
+
+      // Close loading dialog
+      Get.back();
+
+      if (response['success'] == true) {
+        Get.snackbar(
+          'Success',
+          'Application submitted successfully!',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+        );
+
+        // Refresh jobs to update application status
+        await refreshJobs();
+      } else {
+        Get.snackbar(
+          'Error',
+          response['message'] ?? 'Failed to submit application',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (Get.isDialogOpen == true) {
+        Get.back();
+      }
+
+      print('Direct apply error: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to submit application. Please try again.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
   }
 
-  // Check if already applied
+  // Submit application (handles both mock and real API)
+  Future<Map<String, dynamic>> _submitApplication(
+    Map<String, dynamic> applicationData,
+  ) async {
+    try {
+      if (Get.find<ApiService>().isUsingMockData) {
+        // Mock submission
+        await Future.delayed(
+          const Duration(seconds: 2),
+        ); // Simulate network delay
+        return {
+          'success': true,
+          'message': 'Application submitted successfully',
+          'data': {
+            'applicationId': 'mock_${DateTime.now().millisecondsSinceEpoch}',
+          },
+        };
+      } else {
+        // Real API submission
+        return await _jobRepository.submitJobApplication(applicationData);
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to submit application: $e'};
+    }
+  }
+
+  // Check if student is eligible for job (fix CGPA access)
+  bool isStudentEligible(Job job) {
+    if (currentStudent.value == null) return false;
+
+    final student = currentStudent.value!;
+    final requirements = job.requirements;
+
+    // Check CGPA - use direct cgpa property from Student
+    if (student.cgpa < requirements.minCgpa) return false;
+
+    // Check branch
+    if (requirements.allowedBranches.isNotEmpty &&
+        !requirements.allowedBranches.contains(student.branch))
+      return false;
+
+    // Check degree type
+    if (requirements.allowedDegreeTypes.isNotEmpty &&
+        !requirements.allowedDegreeTypes.contains(student.degreeType))
+      return false;
+
+    // Check graduation year
+    if (!requirements.isGraduationYearAllowed(student.graduationYear))
+      return false;
+
+    // Check backlogs
+    if (student.currentBacklogs > requirements.maxBacklogs) return false;
+
+    return true;
+  }
+
+  // Check if student has already applied for job
   bool hasAlreadyApplied(Job job) {
     if (currentStudent.value == null) return false;
-    return job.appliedCandidates.contains(currentStudent.value!.userId);
+    final studentId =
+        currentStudent.value?.studentId ?? currentStudent.value?.userId ?? '';
+    return job.appliedCandidates.contains(studentId);
   }
 
   // Get days left for application
@@ -305,150 +351,9 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
     return difference.inDays;
   }
 
-  // Get application status text
-  String getApplicationStatusText(Job job) {
-    if (hasAlreadyApplied(job)) {
-      return 'Applied';
-    }
+  // Helper methods for UI
+  bool isEligibleForJob(Job job) => isStudentEligible(job);
 
-    if (job.applicationDeadline.isBefore(DateTime.now())) {
-      return 'Deadline Passed';
-    }
-
-    if (!isEligibleForJob(job)) {
-      return 'Not Eligible';
-    }
-
-    return 'Apply Now';
-  }
-
-  // Get application status color
-  Color getApplicationStatusColor(Job job) {
-    if (hasAlreadyApplied(job)) {
-      return Colors.green;
-    }
-
-    if (job.applicationDeadline.isBefore(DateTime.now())) {
-      return Colors.red;
-    }
-
-    if (!isEligibleForJob(job)) {
-      return Colors.orange;
-    }
-
-    return Colors.blue;
-  }
-
-  // Show filters bottom sheet
-  void showFiltersBottomSheet() {
-    Get.bottomSheet(
-      _buildFiltersBottomSheet(),
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-    );
-  }
-
-  Widget _buildFiltersBottomSheet() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Filters',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              TextButton(
-                onPressed: clearFilters,
-                child: const Text('Clear All'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Job Type Filter
-          const Text('Job Type', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Obx(
-            () => Wrap(
-              spacing: 8,
-              children: jobTypes
-                  .map(
-                    (type) => FilterChip(
-                      label: Text(
-                        type == 'ALL' ? 'All Types' : type.replaceAll('_', ' '),
-                      ),
-                      selected: selectedJobType.value == type,
-                      onSelected: (selected) => setJobTypeFilter(type),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Location Filter
-          const Text('Location', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Obx(
-            () => DropdownButtonFormField<String>(
-              value: selectedLocation.value,
-              items: locations
-                  .map(
-                    (location) => DropdownMenuItem(
-                      value: location,
-                      child: Text(
-                        location == 'ALL' ? 'All Locations' : location,
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) => setLocationFilter(value!),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Eligibility Filter
-          Obx(
-            () => SwitchListTile(
-              title: const Text('Show Eligible Jobs Only'),
-              value: showEligibleOnly.value,
-              onChanged: (value) => toggleEligibleOnly(),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          ElevatedButton(
-            onPressed: () => Get.back(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade700,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            child: const Text('Apply Filters'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Format job type display
   String formatJobType(JobType type) {
     switch (type) {
       case JobType.INTERNSHIP:
@@ -457,12 +362,160 @@ class JobsController extends GetxController with GetTickerProviderStateMixin {
         return 'Full Time';
       case JobType.BOTH:
         return 'Both';
+      default:
+        return 'Unknown';
     }
   }
 
-  // Format salary range
   String formatSalary(SalaryRange? salary) {
     if (salary == null) return 'Not disclosed';
     return '${salary.currency} ${salary.min.toStringAsFixed(0)} - ${salary.max.toStringAsFixed(0)}';
+  }
+
+  String getApplicationStatusText(Job job) {
+    if (hasAlreadyApplied(job)) return 'Applied';
+    if (getDaysLeft(job.applicationDeadline) < 0) return 'Expired';
+    if (!isEligibleForJob(job)) return 'Not Eligible';
+    return 'Apply';
+  }
+
+  Color getApplicationStatusColor(Job job) {
+    if (hasAlreadyApplied(job)) return Colors.grey;
+    if (getDaysLeft(job.applicationDeadline) < 0) return Colors.red;
+    if (!isEligibleForJob(job)) return Colors.orange;
+    return Colors.blue;
+  }
+
+  // Filter and search methods
+  void setupSearchListener() {
+    searchController.addListener(() {
+      searchQuery.value = searchController.text;
+    });
+  }
+
+  void setJobTypeFilter(String type) {
+    selectedJobType.value = type;
+  }
+
+  void setLocationFilter(String location) {
+    selectedLocation.value = location;
+  }
+
+  void toggleEligibleOnly() {
+    showEligibleOnly.value = !showEligibleOnly.value;
+  }
+
+  void clearFilters() {
+    searchController.clear();
+    selectedJobType.value = 'ALL';
+    selectedLocation.value = 'ALL';
+    showEligibleOnly.value = true;
+  }
+
+  void filterJobs() {
+    // This method is called when filters change
+    // The actual filtering is now done in getFilteredJobs method
+  }
+
+  // Refresh jobs
+  Future<void> refreshJobs() async {
+    isRefreshing.value = true;
+    await loadJobs();
+    isRefreshing.value = false;
+  }
+
+  // Navigation methods
+  void goToJobDetails(Job job) {
+    // Use a safe route name or create job details route
+    Get.toNamed('/job-details', arguments: {'job': job});
+  }
+
+  void showFiltersBottomSheet() {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Filters',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+
+            // Job Type Filter
+            const Text(
+              'Job Type',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => Wrap(
+                spacing: 8,
+                children: jobTypes
+                    .map(
+                      (type) => FilterChip(
+                        label: Text(type.replaceAll('_', ' ')),
+                        selected: selectedJobType.value == type,
+                        onSelected: (selected) => setJobTypeFilter(type),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Location Filter
+            const Text(
+              'Location',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Obx(
+              () => Wrap(
+                spacing: 8,
+                children: locations
+                    .take(10)
+                    .map(
+                      (location) => FilterChip(
+                        label: Text(location),
+                        selected: selectedLocation.value == location,
+                        onSelected: (selected) => setLocationFilter(location),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: clearFilters,
+                    child: const Text('Clear All'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Get.back(),
+                    child: const Text('Apply'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

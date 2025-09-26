@@ -49,12 +49,10 @@ class Job {
           ? SalaryRange.fromJson(json['salary'])
           : null,
       location: json['location'] ?? '',
-      applicationDeadline: DateTime.parse(
-        json['applicationDeadline'] ?? DateTime.now().toIso8601String(),
-      ),
-      postedAt: DateTime.parse(
-        json['postedAt'] ?? DateTime.now().toIso8601String(),
-      ),
+      applicationDeadline:
+          DateTime.tryParse(json['applicationDeadline'] ?? '') ??
+          DateTime.now().add(Duration(days: 30)),
+      postedAt: DateTime.tryParse(json['postedAt'] ?? '') ?? DateTime.now(),
       customForm: ApplicationForm.fromJson(json['customForm'] ?? {}),
       groupInfo: GroupInfo.fromJson(json['groupInfo'] ?? {}),
       isActive: json['isActive'] ?? true,
@@ -87,7 +85,7 @@ class Requirements {
   final double minCgpa;
   final List<String> allowedBranches;
   final List<String> allowedDegreeTypes;
-  final int graduationYear;
+  final List<int> graduationYears;
   final List<String> requiredSkills;
   final int maxBacklogs;
 
@@ -95,7 +93,7 @@ class Requirements {
     required this.minCgpa,
     required this.allowedBranches,
     required this.allowedDegreeTypes,
-    required this.graduationYear,
+    required this.graduationYears,
     required this.requiredSkills,
     required this.maxBacklogs,
   });
@@ -103,10 +101,26 @@ class Requirements {
   factory Requirements.fromJson(Map<String, dynamic> json) {
     return Requirements(
       minCgpa: (json['minCgpa'] ?? 0.0).toDouble(),
-      allowedBranches: List<String>.from(json['allowedBranches'] ?? []),
-      allowedDegreeTypes: List<String>.from(json['allowedDegreeTypes'] ?? []),
-      graduationYear: json['graduationYear'] ?? DateTime.now().year,
-      requiredSkills: List<String>.from(json['requiredSkills'] ?? []),
+      allowedBranches:
+          (json['allowedBranches'] as List?)
+              ?.map((item) => item.toString())
+              .toList() ??
+          [],
+      allowedDegreeTypes:
+          (json['allowedDegreeTypes'] as List?)
+              ?.map((item) => item.toString())
+              .toList() ??
+          [],
+      graduationYears:
+          (json['graduationYears'] as List?)
+              ?.map((item) => int.tryParse(item.toString()) ?? 0)
+              .toList() ??
+          [],
+      requiredSkills:
+          (json['requiredSkills'] as List?)
+              ?.map((item) => item.toString())
+              .toList() ??
+          [],
       maxBacklogs: json['maxBacklogs'] ?? 0,
     );
   }
@@ -116,10 +130,15 @@ class Requirements {
       'minCgpa': minCgpa,
       'allowedBranches': allowedBranches,
       'allowedDegreeTypes': allowedDegreeTypes,
-      'graduationYear': graduationYear,
+      'graduationYears': graduationYears,
       'requiredSkills': requiredSkills,
       'maxBacklogs': maxBacklogs,
     };
+  }
+
+  bool isGraduationYearAllowed(int year) {
+    if (graduationYears.isEmpty) return true;
+    return graduationYears.contains(year);
   }
 }
 
@@ -144,37 +163,26 @@ class SalaryRange {
 }
 
 class ApplicationForm {
-  final String formId;
   final List<FormQuestion> questions;
   final List<FormLink> additionalLinks;
 
-  ApplicationForm({
-    required this.formId,
-    required this.questions,
-    required this.additionalLinks,
-  });
+  ApplicationForm({required this.questions, required this.additionalLinks});
 
   factory ApplicationForm.fromJson(Map<String, dynamic> json) {
     return ApplicationForm(
-      formId: json['formId'] ?? '',
-      questions:
-          (json['questions'] as List<dynamic>?)
-              ?.map((item) => FormQuestion.fromJson(item))
-              .toList() ??
-          [],
-      additionalLinks:
-          (json['additionalLinks'] as List<dynamic>?)
-              ?.map((item) => FormLink.fromJson(item))
-              .toList() ??
-          [],
+      questions: (json['questions'] as List? ?? [])
+          .map((q) => FormQuestion.fromJson(q))
+          .toList(),
+      additionalLinks: (json['additionalLinks'] as List? ?? [])
+          .map((l) => FormLink.fromJson(l))
+          .toList(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'formId': formId,
-      'questions': questions.map((item) => item.toJson()).toList(),
-      'additionalLinks': additionalLinks.map((item) => item.toJson()).toList(),
+      'questions': questions.map((q) => q.toJson()).toList(),
+      'additionalLinks': additionalLinks.map((l) => l.toJson()).toList(),
     };
   }
 }
@@ -183,28 +191,54 @@ class FormQuestion {
   final String questionId;
   final String questionText;
   final QuestionType questionType;
-  final List<String> options;
   final bool isRequired;
+  final List<String> options;
+  final int? maxLength;
+  final String? placeholder;
 
   FormQuestion({
     required this.questionId,
     required this.questionText,
     required this.questionType,
-    required this.options,
     required this.isRequired,
+    required this.options,
+    this.maxLength,
+    this.placeholder,
   });
 
   factory FormQuestion.fromJson(Map<String, dynamic> json) {
     return FormQuestion(
       questionId: json['questionId'] ?? '',
       questionText: json['questionText'] ?? '',
-      questionType: QuestionType.values.firstWhere(
-        (e) => e.toString().split('.').last == (json['questionType'] ?? 'TEXT'),
-        orElse: () => QuestionType.TEXT,
-      ),
-      options: List<String>.from(json['options'] ?? []),
+      questionType: _parseQuestionType(json['questionType']),
       isRequired: json['isRequired'] ?? false,
+      options: List<String>.from(json['options'] ?? []),
+      maxLength: json['maxLength'],
+      placeholder: json['placeholder'],
     );
+  }
+
+  static QuestionType _parseQuestionType(dynamic type) {
+    if (type == null) return QuestionType.TEXT;
+    final typeString = type.toString().toUpperCase();
+    switch (typeString) {
+      case 'TEXT':
+        return QuestionType.TEXT;
+      case 'MULTIPLE_CHOICE':
+        return QuestionType.MULTIPLE_CHOICE;
+      case 'CHECKBOX':
+        return QuestionType.CHECKBOX;
+      case 'DROPDOWN':
+        return QuestionType.DROPDOWN;
+      case 'FILE_UPLOAD':
+        return QuestionType.FILE_UPLOAD;
+      case 'DATE':
+        return QuestionType.DATE;
+      case 'NUMBER':
+        return QuestionType.NUMBER;
+      default:
+        return QuestionType.TEXT;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -212,60 +246,62 @@ class FormQuestion {
       'questionId': questionId,
       'questionText': questionText,
       'questionType': questionType.toString().split('.').last,
-      'options': options,
       'isRequired': isRequired,
+      'options': options,
+      'maxLength': maxLength,
+      'placeholder': placeholder,
     };
   }
 }
 
 class FormLink {
-  final String linkText;
+  final String linkId;
   final String url;
+  final String linkText;
   final String description;
 
   FormLink({
-    required this.linkText,
+    required this.linkId,
     required this.url,
+    required this.linkText,
     required this.description,
   });
 
   factory FormLink.fromJson(Map<String, dynamic> json) {
     return FormLink(
-      linkText: json['linkText'] ?? '',
+      linkId: json['linkId'] ?? '',
       url: json['url'] ?? '',
+      linkText: json['linkText'] ?? '',
       description: json['description'] ?? '',
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {'linkText': linkText, 'url': url, 'description': description};
+    return {
+      'linkId': linkId,
+      'url': url,
+      'linkText': linkText,
+      'description': description,
+    };
   }
 }
 
 class GroupInfo {
   final String groupId;
   final String groupName;
-  final int participantCount;
-  final bool isActive;
-  final DateTime createdAt;
+  final bool isGroupRequired;
 
   GroupInfo({
     required this.groupId,
     required this.groupName,
-    required this.participantCount,
-    required this.isActive,
-    required this.createdAt,
+    required this.isGroupRequired,
   });
 
   factory GroupInfo.fromJson(Map<String, dynamic> json) {
     return GroupInfo(
       groupId: json['groupId'] ?? '',
       groupName: json['groupName'] ?? '',
-      participantCount: json['participantCount'] ?? 0,
-      isActive: json['isActive'] ?? true,
-      createdAt: DateTime.parse(
-        json['createdAt'] ?? DateTime.now().toIso8601String(),
-      ),
+      isGroupRequired: json['isGroupRequired'] ?? false,
     );
   }
 
@@ -273,9 +309,7 @@ class GroupInfo {
     return {
       'groupId': groupId,
       'groupName': groupName,
-      'participantCount': participantCount,
-      'isActive': isActive,
-      'createdAt': createdAt.toIso8601String(),
+      'isGroupRequired': isGroupRequired,
     };
   }
 }

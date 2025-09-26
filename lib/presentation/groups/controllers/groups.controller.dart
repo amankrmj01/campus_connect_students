@@ -79,14 +79,18 @@ class GroupsController extends GetxController {
         studentId: currentStudent.value!.userId,
       );
 
-      if (response['success'] == true) {
-        final groups = (response['groups'] as List)
+      if (response['success'] == true && response['data'] != null) {
+        final groupsData = response['data']['groups'] as List? ?? [];
+        final groups = groupsData
             .map((group) => RecruitmentGroup.fromJson(group))
             .toList();
         userGroups.assignAll(groups);
+      } else {
+        userGroups.clear();
       }
     } catch (e) {
       print('Load user groups error: $e');
+      userGroups.clear();
     }
   }
 

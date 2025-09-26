@@ -16,7 +16,7 @@ class ProfileRepository extends GetxService {
   // Get Student Profile
   Future<Map<String, dynamic>> getStudentProfile() async {
     try {
-      final response = await _apiService.get('/profile');
+      final response = await _apiService.getCurrentUser();
 
       if (response['success'] == true) {
         // Update local storage
@@ -42,32 +42,25 @@ class ProfileRepository extends GetxService {
     Map<String, dynamic> personalData,
   ) async {
     try {
-      final response = await _apiService.put(
-        '/profile/personal',
-        data: personalData,
+      final response = await _apiService.updateUserProfile(
+        await _getCurrentUserId(),
+        personalData,
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
-
-        // Show success notification
         await _notificationService.showNotification(
           id: 'profile_update'.hashCode,
           title: 'Profile Updated',
           body: 'Your personal details have been updated successfully',
         );
+        await _storageService.saveStudentData(response['data']);
       }
 
       return response;
     } catch (e) {
       print('Update personal details error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to update personal details',
-      };
+      return {'success': false, 'message': 'Failed to update personal details'};
     }
   }
 
@@ -76,32 +69,20 @@ class ProfileRepository extends GetxService {
     Map<String, dynamic> academicData,
   ) async {
     try {
-      final response = await _apiService.put(
-        '/profile/academic',
-        data: academicData,
+      final response = await _apiService.updateUserProfile(
+        await _getCurrentUserId(),
+        {'academicDetails': academicData},
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
-
-        // Show success notification
-        await _notificationService.showNotification(
-          id: 'academic_update'.hashCode,
-          title: 'Academic Details Updated',
-          body: 'Your academic information has been updated successfully',
-        );
+        await _storageService.saveStudentData(response['data']);
       }
 
       return response;
     } catch (e) {
       print('Update academic details error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to update academic details',
-      };
+      return {'success': false, 'message': 'Failed to update academic details'};
     }
   }
 
@@ -110,91 +91,68 @@ class ProfileRepository extends GetxService {
     Map<String, dynamic> addressData,
   ) async {
     try {
-      final response = await _apiService.put(
-        '/profile/address',
-        data: addressData,
+      final response = await _apiService.updateUserProfile(
+        await _getCurrentUserId(),
+        {'address': addressData},
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
+        await _storageService.saveStudentData(response['data']);
       }
 
       return response;
     } catch (e) {
       print('Update address error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to update address',
-      };
+      return {'success': false, 'message': 'Failed to update address'};
     }
   }
 
   // Upload Profile Image
   Future<Map<String, dynamic>> uploadProfileImage(File imageFile) async {
     try {
-      final response = await _apiService.uploadFile(
-        '/profile/image',
+      final response = await _apiService.uploadProfileImage(
+        await _getCurrentUserId(),
         imageFile.path,
-        fieldName: 'profile_image',
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
-
-        // Show success notification
-        await _notificationService.showNotification(
-          id: 'profile_image_update'.hashCode,
-          title: 'Profile Picture Updated',
-          body: 'Your profile picture has been updated successfully',
-        );
+        final studentData = await _storageService.getStudentData();
+        if (studentData != null) {
+          studentData['profileImage'] = response['data']['profileImage'];
+          await _storageService.saveStudentData(studentData);
+        }
       }
 
       return response;
     } catch (e) {
       print('Upload profile image error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to upload profile image',
-      };
+      return {'success': false, 'message': 'Failed to upload profile image'};
     }
   }
 
   // Upload Resume
   Future<Map<String, dynamic>> uploadResume(File resumeFile) async {
     try {
-      final response = await _apiService.uploadFile(
-        '/profile/resume',
+      final response = await _apiService.uploadDocument(
         resumeFile.path,
-        fieldName: 'resume',
+        'resume',
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
-
-        // Show success notification
-        await _notificationService.showNotification(
-          id: 'resume_update'.hashCode,
-          title: 'Resume Updated',
-          body: 'Your resume has been uploaded successfully',
-        );
+        final studentData = await _storageService.getStudentData();
+        if (studentData != null) {
+          studentData['resume'] = response['data']['fileUrl'];
+          await _storageService.saveStudentData(studentData);
+        }
       }
 
       return response;
     } catch (e) {
       print('Upload resume error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to upload resume',
-      };
+      return {'success': false, 'message': 'Failed to upload resume'};
     }
   }
 
@@ -203,25 +161,20 @@ class ProfileRepository extends GetxService {
     List<Map<String, dynamic>> workExperiences,
   ) async {
     try {
-      final response = await _apiService.put(
-        '/profile/work-experience',
-        data: {'work_experiences': workExperiences},
+      final response = await _apiService.updateUserProfile(
+        await _getCurrentUserId(),
+        {'workExperience': workExperiences},
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
+        await _storageService.saveStudentData(response['data']);
       }
 
       return response;
     } catch (e) {
       print('Update work experiences error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to update work experiences',
-      };
+      return {'success': false, 'message': 'Failed to update work experiences'};
     }
   }
 
@@ -230,25 +183,20 @@ class ProfileRepository extends GetxService {
     List<Map<String, dynamic>> certifications,
   ) async {
     try {
-      final response = await _apiService.put(
-        '/profile/certifications',
-        data: {'certifications': certifications},
+      final response = await _apiService.updateUserProfile(
+        await _getCurrentUserId(),
+        {'certifications': certifications},
       );
 
       if (response['success'] == true) {
         // Update local storage
-        await _storageService.saveStudentData(response['student']);
+        await _storageService.saveStudentData(response['data']);
       }
 
       return response;
     } catch (e) {
       print('Update certifications error: $e');
-      return {
-        'success': false,
-        'message': e.toString().contains('ApiException')
-            ? e.toString().replaceAll('ApiException: ', '')
-            : 'Failed to update certifications',
-      };
+      return {'success': false, 'message': 'Failed to update certifications'};
     }
   }
 
@@ -453,5 +401,11 @@ class ProfileRepository extends GetxService {
   // Clear Profile Cache
   Future<void> clearProfileCache() async {
     await _storageService.clearStudentData();
+  }
+
+  // Helper method to get current user ID
+  Future<String> _getCurrentUserId() async {
+    final studentData = await _storageService.getStudentData();
+    return studentData?['id'] ?? 'user_001';
   }
 }

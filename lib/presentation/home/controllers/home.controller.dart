@@ -5,13 +5,11 @@ import 'package:get/get.dart';
 import '../../../data/models/job_model.dart';
 import '../../../data/models/student_model.dart';
 import '../../../data/repositories/job_repository.dart';
-import '../../../data/repositories/profile_repository.dart';
 import '../../../data/services/storage_service.dart';
 import '../../../infrastructure/navigation/routes.dart';
 
 class HomeController extends GetxController {
   final JobRepository _jobRepository = Get.find<JobRepository>();
-  final ProfileRepository _profileRepository = Get.find<ProfileRepository>();
   final StorageService _storageService = Get.find<StorageService>();
 
   // Reactive variables
@@ -99,95 +97,131 @@ class HomeController extends GetxController {
     try {
       if (currentStudent.value == null) return;
 
-      // Load application stats
-      final appStatsResponse = await _jobRepository.getApplicationStatistics();
-      if (appStatsResponse['success'] == true) {
-        final stats = appStatsResponse['statistics'];
-        totalApplications.value = stats['total'] ?? 0;
-        pendingApplications.value = stats['pending'] ?? 0;
-        shortlistedApplications.value = stats['shortlisted'] ?? 0;
-      }
-
-      // Load eligible jobs count
-      final jobsResponse = await _jobRepository.getFilteredJobs(
-        cgpa: currentStudent.value!.academicDetails?.cgpa ?? 0.0,
-        branch: currentStudent.value!.branch,
-        degreeType: currentStudent.value!.degreeType,
-        graduationYear:
-            currentStudent.value!.academicDetails?.graduationYear ??
-            DateTime.now().year,
-        limit: 1, // Just to get count
+      // Load student applications to calculate statistics
+      final appStatsResponse = await _jobRepository.getStudentApplications(
+        studentId: currentStudent.value!.userId,
+        limit: 100, // Get enough to calculate stats
       );
 
-      if (jobsResponse['success'] == true) {
-        eligibleJobs.value = (jobsResponse['eligible'] as List).length;
+      if (appStatsResponse['success'] == true &&
+          appStatsResponse['data'] != null) {
+        final applications =
+            appStatsResponse['data']['applications'] as List? ?? [];
+
+        // Calculate statistics from applications
+        totalApplications.value = applications.length;
+        pendingApplications.value = applications
+            .where((app) => (app['status'] ?? '').toLowerCase() == 'pending')
+            .length;
+        shortlistedApplications.value = applications
+            .where(
+              (app) => (app['status'] ?? '').toLowerCase() == 'shortlisted',
+            )
+            .length;
+      } else {
+        // Fallback to zero values
+        totalApplications.value = 0;
+        pendingApplications.value = 0;
+        shortlistedApplications.value = 0;
+      }
+
+      // Load eligible jobs count with proper null handling
+      final jobsResponse = await _jobRepository.getAllJobs(limit: 1);
+      if (jobsResponse['success'] == true && jobsResponse['data'] != null) {
+        final jobsData = jobsResponse['data']['jobs'] as List? ?? [];
+        eligibleJobs.value = jobsData.length;
+      } else {
+        eligibleJobs.value = 0;
       }
     } catch (e) {
       print('Load dashboard stats error: $e');
+      // Set safe fallback values
+      totalApplications.value = 0;
+      pendingApplications.value = 0;
+      shortlistedApplications.value = 0;
+      eligibleJobs.value = 0;
     }
   }
 
   // Load recent data
   Future<void> loadRecentData() async {
     try {
-      // Load recent jobs
-      final recentJobsResponse = await _jobRepository.getJobRecommendations(
-        limit: 5,
-      );
-      if (recentJobsResponse['success'] == true) {
-        final jobs = (recentJobsResponse['jobs'] as List)
-            .map((job) => Job.fromJson(job))
-            .toList();
+      // Load recent jobs using getAllJobs
+      final recentJobsResponse = await _jobRepository.getAllJobs(limit: 5);
+      if (recentJobsResponse['success'] == true &&
+          recentJobsResponse['data'] != null) {
+        final jobsData = recentJobsResponse['data']['jobs'] as List? ?? [];
+        final jobs = jobsData.map((job) => Job.fromJson(job)).toList();
         recentJobs.assignAll(jobs);
+      } else {
+        recentJobs.clear();
       }
 
-      // Load recent applications
-      final applicationsResponse = await _jobRepository.getMyApplications(
-        limit: 3,
-      );
-      if (applicationsResponse['success'] == true) {
-        recentApplications.assignAll(
-          List<Map<String, dynamic>>.from(
-            applicationsResponse['applications'] ?? [],
-          ),
-        );
+      // Load recent applications using getStudentApplications
+      if (currentStudent.value != null) {
+        final applicationsResponse = await _jobRepository
+            .getStudentApplications(
+              studentId: currentStudent.value!.userId,
+              limit: 3,
+            );
+        if (applicationsResponse['success'] == true &&
+            applicationsResponse['data'] != null) {
+          final applicationsData =
+              applicationsResponse['data']['applications'] as List? ?? [];
+          recentApplications.assignAll(
+            List<Map<String, dynamic>>.from(applicationsData),
+          );
+        } else {
+          recentApplications.clear();
+        }
+      } else {
+        recentApplications.clear();
       }
 
-      // Load upcoming deadlines
-      final deadlinesResponse = await _jobRepository.getFilteredJobs(
-        cgpa: currentStudent.value?.academicDetails?.cgpa ?? 0.0,
-        branch: currentStudent.value?.branch ?? '',
-        degreeType: currentStudent.value?.degreeType ?? '',
-        graduationYear:
-            currentStudent.value?.academicDetails?.graduationYear ??
-            DateTime.now().year,
-        limit: 10,
-      );
+      // Load upcoming deadlines using getAllJobs instead of getFilteredJobs
+      final deadlinesResponse = await _jobRepository.getAllJobs(limit: 10);
+      if (deadlinesResponse['success'] == true &&
+          deadlinesResponse['data'] != null) {
+        final jobsData = deadlinesResponse['data']['jobs'] as List? ?? [];
+        final deadlines = <Map<String, dynamic>>[];
 
-      if (deadlinesResponse['success'] == true) {
-        final jobs = deadlinesResponse['eligible'] as List;
-        final deadlines = jobs
-            .where((job) {
-              final deadline = DateTime.parse(job['application_deadline']);
+        for (final job in jobsData) {
+          try {
+            final deadlineStr =
+                job['applicationDeadline'] ?? job['application_deadline'];
+            if (deadlineStr != null) {
+              final deadline = DateTime.parse(deadlineStr);
               final daysLeft = deadline.difference(DateTime.now()).inDays;
-              return daysLeft >= 0 && daysLeft <= 7; // Next 7 days
-            })
-            .map(
-              (job) => {
-                'job_title': job['title'],
-                'company_name': job['company_name'],
-                'deadline': job['application_deadline'],
-                'days_left': DateTime.parse(
-                  job['application_deadline'],
-                ).difference(DateTime.now()).inDays,
-              },
-            )
-            .toList();
 
-        upcomingDeadlines.assignAll(List<Map<String, dynamic>>.from(deadlines));
+              if (daysLeft >= 0 && daysLeft <= 7) {
+                // Next 7 days
+                deadlines.add({
+                  'job_title': job['title'] ?? 'Unknown Job',
+                  'company_name':
+                      job['companyName'] ??
+                      job['company_name'] ??
+                      'Unknown Company',
+                  'deadline': deadlineStr,
+                  'days_left': daysLeft,
+                });
+              }
+            }
+          } catch (e) {
+            // Skip invalid date entries
+            continue;
+          }
+        }
+
+        upcomingDeadlines.assignAll(deadlines);
+      } else {
+        upcomingDeadlines.clear();
       }
     } catch (e) {
       print('Load recent data error: $e');
+      // Clear all lists on error
+      recentJobs.clear();
+      recentApplications.clear();
+      upcomingDeadlines.clear();
     }
   }
 

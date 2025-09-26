@@ -9,6 +9,7 @@ class Routes {
   static const GROUPS = '/groups';
   static const HOME = '/home';
   static const JOBS = '/jobs';
+  static const JOB_APPLICATION = '/job-application';
   static const PROFILE = '/profile';
   static const SETTINGS = '/settings';
   static const AUTH = '/auth';

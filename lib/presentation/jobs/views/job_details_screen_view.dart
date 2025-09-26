@@ -304,7 +304,9 @@ class JobDetailsScreenView extends GetView<JobsController> {
             ),
             _buildRequirementItem(
               'Graduation Year',
-              job.requirements.graduationYear.toString(),
+              job.requirements.graduationYears
+                  .map((year) => year.toString())
+                  .join(', '),
             ),
             _buildRequirementItem(
               'Maximum Backlogs',

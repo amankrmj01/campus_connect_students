@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../data/models/enum.dart';
 import '../../../data/models/student_model.dart';
 import '../../../data/repositories/profile_repository.dart';
 import '../../../data/services/storage_service.dart';
@@ -32,14 +31,27 @@ class ProfileController extends GetxController
   final TextEditingController nameController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
+  final TextEditingController dateOfBirthController = TextEditingController();
+  final TextEditingController genderController = TextEditingController();
+  final TextEditingController nationalityController = TextEditingController();
 
   // Form controllers - Academic Details
+  final TextEditingController studentIdController = TextEditingController();
+  final TextEditingController degreeController = TextEditingController();
+  final TextEditingController branchController = TextEditingController();
+  final TextEditingController collegeController = TextEditingController();
+  final TextEditingController universityController = TextEditingController();
+  final TextEditingController departmentController = TextEditingController();
+  final TextEditingController yearController = TextEditingController();
+  final TextEditingController semesterController = TextEditingController();
+  final TextEditingController batchController = TextEditingController();
   final TextEditingController cgpaController = TextEditingController();
   final TextEditingController tenthMarksController = TextEditingController();
   final TextEditingController twelfthMarksController = TextEditingController();
   final TextEditingController backlogsController = TextEditingController();
   final TextEditingController graduationYearController =
       TextEditingController();
+  final TextEditingController categoryController = TextEditingController();
 
   // Form controllers - Address
   final TextEditingController streetController = TextEditingController();
@@ -80,6 +92,18 @@ class ProfileController extends GetxController
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
+    dateOfBirthController.dispose();
+    genderController.dispose();
+    nationalityController.dispose();
+    studentIdController.dispose();
+    degreeController.dispose();
+    branchController.dispose();
+    collegeController.dispose();
+    universityController.dispose();
+    departmentController.dispose();
+    yearController.dispose();
+    semesterController.dispose();
+    batchController.dispose();
     cgpaController.dispose();
     tenthMarksController.dispose();
     twelfthMarksController.dispose();
@@ -144,6 +168,16 @@ class ProfileController extends GetxController
 
     // Academic Details
     if (student.academicDetails != null) {
+      studentIdController.text = student.studentId ?? '';
+      degreeController.text = student.academicDetails!.degree ?? '';
+      branchController.text = student.academicDetails!.branch ?? '';
+      collegeController.text = student.academicDetails!.college ?? '';
+      universityController.text = student.academicDetails!.university ?? '';
+      departmentController.text = student.academicDetails!.department ?? '';
+      yearController.text = student.academicDetails!.year?.toString() ?? '';
+      semesterController.text =
+          student.academicDetails!.semester?.toString() ?? '';
+      batchController.text = student.academicDetails!.batch ?? '';
       cgpaController.text = student.academicDetails!.cgpa?.toString() ?? '';
       tenthMarksController.text =
           student.academicDetails!.tenthMarks?.toString() ?? '';

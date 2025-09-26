@@ -8,6 +8,9 @@ import '../mock_data/job_mock_data.dart';
 import '../mock_data/user_mock_data.dart';
 
 class MockApiService {
+  // Store submitted applications with status
+  static final Map<String, Map<String, dynamic>> _submittedApplications = {};
+
   // Simulate network delay
   static Future<void> _simulateDelay([int? milliseconds]) async {
     final delay = milliseconds ?? Random().nextInt(1000) + 500; // 500-1500ms
@@ -122,187 +125,261 @@ class MockApiService {
     };
   }
 
-  // Job APIs
+  // Job APIs - Returns eligible/not eligible jobs based on student criteria
   static Future<Map<String, dynamic>> getJobs({
+    required double cgpa,
+    required String branch,
+    required String degreeType,
+    required int graduationYear,
     int page = 1,
-    int limit = 10,
-    String? search,
-    String? type,
-    String? location,
-    String? company,
+    int limit = 50,
   }) async {
-    await _simulateDelay();
+    await _simulateDelay(800);
 
-    // TODO: Replace with actual API call
-    List<Map<String, dynamic>> jobs = List.from(JobMockData.jobs);
+    try {
+      final currentTime = DateTime.now();
+      final allJobs = JobMockData.getAllJobs();
 
-    // Apply filters
-    if (search != null && search.isNotEmpty) {
-      jobs = JobMockData.searchJobs(search);
-    }
-    if (type != null && type != 'ALL') {
-      jobs = jobs.where((job) => job['type'] == type).toList();
-    }
-    if (location != null && location != 'ALL') {
-      jobs = jobs
-          .where((job) => job['location'].toString().contains(location))
-          .toList();
-    }
-    if (company != null && company.isNotEmpty) {
-      jobs = jobs
-          .where(
-            (job) => job['companyName'].toString().toLowerCase().contains(
-              company.toLowerCase(),
-            ),
-          )
-          .toList();
-    }
+      final List<Map<String, dynamic>> eligibleJobs = [];
+      final List<Map<String, dynamic>> notEligibleJobs = [];
 
-    // Pagination
-    final startIndex = (page - 1) * limit;
-    final endIndex = startIndex + limit;
-    final paginatedJobs = jobs.skip(startIndex).take(limit).toList();
+      for (final job in allJobs) {
+        // Check if job is still open (before deadline)
+        final deadline = DateTime.parse(job['applicationDeadline']);
+        if (deadline.isBefore(currentTime)) {
+          continue; // Skip expired jobs
+        }
 
-    return {
-      'success': true,
-      'data': {
-        'jobs': paginatedJobs,
-        'pagination': {
-          'currentPage': page,
-          'totalPages': (jobs.length / limit).ceil(),
-          'totalJobs': jobs.length,
-          'hasNextPage': endIndex < jobs.length,
+        final requirements = job['requirements'] as Map<String, dynamic>;
+        bool isEligible = true;
+
+        // Check eligibility criteria
+        // CGPA check
+        if (cgpa < (requirements['minCgpa'] ?? 0.0)) {
+          isEligible = false;
+        }
+
+        // Branch check
+        final allowedBranches = List<String>.from(
+          requirements['allowedBranches'] ?? [],
+        );
+        if (allowedBranches.isNotEmpty && !allowedBranches.contains(branch)) {
+          isEligible = false;
+        }
+
+        // Degree type check
+        final allowedDegreeTypes = List<String>.from(
+          requirements['allowedDegreeTypes'] ?? [],
+        );
+        if (allowedDegreeTypes.isNotEmpty &&
+            !allowedDegreeTypes.contains(degreeType)) {
+          isEligible = false;
+        }
+
+        // Graduation year check
+        final graduationYears = List<int>.from(
+          requirements['graduationYears'] ?? [],
+        );
+        if (graduationYears.isNotEmpty &&
+            !graduationYears.contains(graduationYear)) {
+          isEligible = false;
+        }
+
+        // Add to appropriate list
+        if (isEligible) {
+          eligibleJobs.add(job);
+        } else {
+          notEligibleJobs.add(job);
+        }
+      }
+
+      return {
+        'success': true,
+        'message': 'Jobs fetched successfully',
+        'data': {
+          'jobs': [...eligibleJobs, ...notEligibleJobs],
+          // All jobs for compatibility
+          'eligible': eligibleJobs,
+          'notEligible': notEligibleJobs,
+          'pagination': {
+            'currentPage': page,
+            'totalPages': 1,
+            'totalItems': eligibleJobs.length + notEligibleJobs.length,
+            'itemsPerPage': limit,
+          },
         },
-      },
-    };
-  }
-
-  static Future<Map<String, dynamic>> getJobById(String jobId) async {
-    await _simulateDelay();
-
-    // TODO: Replace with actual API call
-    final job = JobMockData.getJobById(jobId);
-    if (job.isEmpty) {
-      throw Exception('Job not found');
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to fetch jobs: $e',
+        'data': {'jobs': [], 'eligible': [], 'notEligible': []},
+      };
     }
-
-    return {'success': true, 'data': job};
   }
 
-  static Future<Map<String, dynamic>> getJobFilters() async {
-    await _simulateDelay(300);
-
-    // TODO: Replace with actual API call
-    return {'success': true, 'data': JobMockData.jobFilters};
-  }
-
-  // Application APIs
-  static Future<Map<String, dynamic>> applyForJob(
-    String jobId,
-    Map<String, dynamic> applicationData,
-  ) async {
+  // Submit job application
+  static Future<Map<String, dynamic>> submitJobApplication({
+    required String jobId,
+    required String candidateId,
+    required List<Map<String, dynamic>> answers,
+  }) async {
     await _simulateDelay(1500);
 
-    // TODO: Replace with actual API call
-    final newApplication = {
-      'id': 'app_${Random().nextInt(9999).toString().padLeft(4, '0')}',
-      'studentId': UserMockData.currentUser['id'],
-      'jobId': jobId,
-      ...applicationData,
-      'appliedDate': DateTime.now().toIso8601String(),
-      'status': 'APPLIED',
-      'statusHistory': [
-        {
-          'status': 'APPLIED',
-          'date': DateTime.now().toIso8601String(),
-          'note': 'Application submitted successfully',
-        },
-      ],
-    };
+    try {
+      final applicationId =
+          'APP_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1000)}';
 
-    return {
-      'success': true,
-      'message': 'Application submitted successfully',
-      'data': newApplication,
-    };
+      // Determine initial status (simulate real-world scenarios)
+      final statusOptions = ['UNDER_REVIEW', 'PENDING'];
+      final status = statusOptions[Random().nextInt(statusOptions.length)];
+
+      final application = {
+        'applicationId': applicationId,
+        'jobId': jobId,
+        'candidateId': candidateId,
+        'answers': answers,
+        'status': status,
+        'appliedAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+
+      // Store the application
+      _submittedApplications[applicationId] = application;
+
+      // Add to candidate's applied jobs list (simulate updating user data)
+      _addToStudentApplications(candidateId, jobId, applicationId, status);
+
+      return {
+        'success': true,
+        'message': 'Application submitted successfully',
+        'data': {
+          'applicationId': applicationId,
+          'status': status,
+          'submittedAt': application['appliedAt'],
+        },
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to submit application: $e'};
+    }
   }
 
-  static Future<Map<String, dynamic>> getApplications(
-    String studentId, {
+  // Get student applications
+  static Future<Map<String, dynamic>> getStudentApplications({
+    required String studentId,
     int page = 1,
     int limit = 10,
     String? status,
   }) async {
-    await _simulateDelay();
+    await _simulateDelay(600);
 
-    // TODO: Replace with actual API call
-    List<Map<String, dynamic>> applications =
-        ApplicationMockData.getApplicationsByStudentId(studentId);
-
-    if (status != null && status != 'ALL') {
-      applications = applications
-          .where((app) => app['status'] == status)
+    try {
+      // Get applications for this student
+      final studentApplications = _submittedApplications.values
+          .where((app) => app['candidateId'] == studentId)
           .toList();
-    }
 
-    // Sort by applied date (newest first)
-    applications.sort(
-      (a, b) => DateTime.parse(
-        b['appliedDate'],
-      ).compareTo(DateTime.parse(a['appliedDate'])),
-    );
+      // Filter by status if provided
+      final filteredApplications = status != null
+          ? studentApplications.where((app) => app['status'] == status).toList()
+          : studentApplications;
 
-    // Pagination
-    final startIndex = (page - 1) * limit;
-    final paginatedApps = applications.skip(startIndex).take(limit).toList();
+      // Sort by applied date (newest first)
+      filteredApplications.sort(
+        (a, b) => DateTime.parse(
+          b['appliedAt'],
+        ).compareTo(DateTime.parse(a['appliedAt'])),
+      );
 
-    return {
-      'success': true,
-      'data': {
-        'applications': paginatedApps,
-        'pagination': {
-          'currentPage': page,
-          'totalPages': (applications.length / limit).ceil(),
-          'totalApplications': applications.length,
-          'hasNextPage': startIndex + limit < applications.length,
+      // Add job details to each application
+      final enrichedApplications = filteredApplications.map((app) {
+        final job = JobMockData.getJobById(app['jobId']);
+        return {...app, 'job': job};
+      }).toList();
+
+      return {
+        'success': true,
+        'message': 'Applications fetched successfully',
+        'data': {
+          'applications': enrichedApplications,
+          'pagination': {
+            'currentPage': page,
+            'totalPages': (enrichedApplications.length / limit).ceil(),
+            'totalItems': enrichedApplications.length,
+            'itemsPerPage': limit,
+          },
         },
-        'stats': ApplicationMockData.getApplicationStats(studentId),
-      },
-    };
-  }
-
-  static Future<Map<String, dynamic>> getApplicationById(
-    String applicationId,
-  ) async {
-    await _simulateDelay();
-
-    // TODO: Replace with actual API call
-    final application = ApplicationMockData.getApplicationById(applicationId);
-    if (application.isEmpty) {
-      throw Exception('Application not found');
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to fetch applications: $e',
+        'data': {'applications': []},
+      };
     }
-
-    return {'success': true, 'data': application};
   }
 
-  static Future<Map<String, dynamic>> withdrawApplication(
+  // Update application status (simulate status changes over time)
+  static Future<Map<String, dynamic>> updateApplicationStatus({
+    required String applicationId,
+    required String status,
+  }) async {
+    await _simulateDelay(400);
+
+    try {
+      if (_submittedApplications.containsKey(applicationId)) {
+        _submittedApplications[applicationId]!['status'] = status;
+        _submittedApplications[applicationId]!['updatedAt'] = DateTime.now()
+            .toIso8601String();
+
+        return {
+          'success': true,
+          'message': 'Application status updated successfully',
+          'data': _submittedApplications[applicationId],
+        };
+      } else {
+        return {'success': false, 'message': 'Application not found'};
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Failed to update application status: $e',
+      };
+    }
+  }
+
+  // Helper method to add application to student's list
+  static void _addToStudentApplications(
+    String candidateId,
+    String jobId,
     String applicationId,
-  ) async {
-    await _simulateDelay(800);
-
-    // TODO: Replace with actual API call
-    return {'success': true, 'message': 'Application withdrawn successfully'};
+    String status,
+  ) {
+    // In a real app, this would update the user's data in the database
+    // For mock, we're just storing in the applications map
+    print(
+      'Added application $applicationId for student $candidateId to job $jobId with status $status',
+    );
   }
 
-  static Future<Map<String, dynamic>> getUpcomingInterviews(
-    String studentId,
-  ) async {
-    await _simulateDelay();
+  // Simulate status changes for demo (call this periodically)
+  static void simulateStatusUpdates() {
+    final random = Random();
+    final statusOptions = [
+      'UNDER_REVIEW',
+      'SHORTLISTED',
+      'REJECTED',
+      'SELECTED',
+    ];
 
-    // TODO: Replace with actual API call
-    final interviews = ApplicationMockData.getUpcomingInterviews(studentId);
-
-    return {'success': true, 'data': interviews};
+    for (final application in _submittedApplications.values) {
+      if (random.nextBool() && random.nextBool()) {
+        // 25% chance
+        final newStatus = statusOptions[random.nextInt(statusOptions.length)];
+        application['status'] = newStatus;
+        application['updatedAt'] = DateTime.now().toIso8601String();
+      }
+    }
   }
 
   // Group APIs
@@ -534,5 +611,25 @@ class MockApiService {
 
     // TODO: Replace with actual API call
     return {'success': true, 'message': 'Account deleted successfully'};
+  }
+
+  // Job Application Questions API
+  static Future<Map<String, dynamic>> getJobApplicationQuestions(
+    String jobId,
+  ) async {
+    await _simulateDelay(400);
+
+    // Get job data and return application questions
+    final jobData = JobMockData.getJobById(jobId);
+    if (jobData.isEmpty) {
+      return {'success': false, 'message': 'Job not found'};
+    }
+
+    final questions = jobData['applicationQuestions'] as List? ?? [];
+
+    return {
+      'success': true,
+      'data': {'questions': questions, 'jobId': jobId},
+    };
   }
 }

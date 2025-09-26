@@ -76,6 +76,35 @@ class JobsScreen extends GetView<JobsController> {
                       ),
                     ),
                   ),
+
+                  // Tab Bar
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: TabBar(
+                      controller: controller.tabController,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      indicator: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      labelColor: Colors.blue.shade700,
+                      unselectedLabelColor: Colors.white,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                      tabs: const [
+                        Tab(text: 'Eligible'),
+                        Tab(text: 'Not Eligible'),
+                        Tab(text: 'All'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -84,33 +113,46 @@ class JobsScreen extends GetView<JobsController> {
           // Filters Summary
           _buildFiltersChips(),
 
-          // Jobs List
+          // Tab View Content
           Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (controller.filteredJobs.isEmpty) {
-                return _buildEmptyState();
-              }
-
-              return RefreshIndicator(
-                onRefresh: controller.refreshJobs,
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: controller.filteredJobs.length,
-                  itemBuilder: (context, index) {
-                    final job = controller.filteredJobs[index];
-                    return _buildJobCard(job);
-                  },
-                ),
-              );
-            }),
+            child: TabBarView(
+              controller: controller.tabController,
+              children: [
+                _buildJobsList(controller.eligibleJobs),
+                _buildJobsList(controller.notEligibleJobs),
+                _buildJobsList(controller.allJobs),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildJobsList(RxList<Job> jobsList) {
+    return Obx(() {
+      if (controller.isLoading.value) {
+        return const Center(child: CircularProgressIndicator());
+      }
+
+      final filteredJobs = controller.getFilteredJobs(jobsList);
+
+      if (filteredJobs.isEmpty) {
+        return _buildEmptyState();
+      }
+
+      return RefreshIndicator(
+        onRefresh: controller.refreshJobs,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: filteredJobs.length,
+          itemBuilder: (context, index) {
+            final job = filteredJobs[index];
+            return _buildJobCard(job);
+          },
+        ),
+      );
+    });
   }
 
   Widget _buildFiltersChips() {
@@ -387,7 +429,7 @@ class JobsScreen extends GetView<JobsController> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -413,10 +455,10 @@ class JobsScreen extends GetView<JobsController> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.work_off_outlined, size: 80, color: Colors.grey.shade400),
+          Icon(Icons.work_off, size: 64, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
-            'No Jobs Found',
+            'No jobs found',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -425,14 +467,9 @@ class JobsScreen extends GetView<JobsController> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Try adjusting your filters or\ncomplete your profile for better matches',
+            'Try adjusting your filters or check back later',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade500),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: controller.clearFilters,
-            child: const Text('Clear Filters'),
           ),
         ],
       ),

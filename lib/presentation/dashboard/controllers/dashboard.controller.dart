@@ -90,18 +90,26 @@ class DashboardController extends GetxController {
   // Load recent applications
   Future<void> loadRecentApplications() async {
     try {
-      final response = await _profileRepository.getStudentApplications(
+      if (currentStudent.value == null) return;
+
+      final response = await _jobRepository.getStudentApplications(
+        studentId: currentStudent.value!.userId,
         limit: 5,
       );
 
-      if (response['success'] == true) {
-        final applications = (response['applications'] as List)
+      if (response['success'] == true && response['data'] != null) {
+        final applicationsData =
+            response['data']['applications'] as List? ?? [];
+        final applications = applicationsData
             .map((app) => Application.fromJson(app))
             .toList();
         recentApplications.assignAll(applications);
+      } else {
+        recentApplications.clear();
       }
     } catch (e) {
       print('Load recent applications error: $e');
+      recentApplications.clear();
     }
   }
 
@@ -110,39 +118,63 @@ class DashboardController extends GetxController {
     try {
       if (currentStudent.value == null) return;
 
-      final response = await _jobRepository.getFilteredJobs(
-        cgpa: currentStudent.value!.academicDetails?.cgpa ?? 0.0,
-        branch: currentStudent.value!.branch,
-        degreeType: currentStudent.value!.degreeType,
-        graduationYear:
-            currentStudent.value!.academicDetails?.graduationYear ??
-            DateTime.now().year,
-        limit: 3,
+      final response = await _jobRepository.getAllJobs(
+        limit: 10, // Get more jobs to filter locally
       );
 
-      if (response['success'] == true) {
-        final jobs = (response['eligible'] as List)
+      if (response['success'] == true && response['data'] != null) {
+        final jobsData = response['data']['jobs'] as List? ?? [];
+        final jobs = jobsData
             .map((job) => Job.fromJson(job))
+            .take(3) // Take only first 3 for recommendations
             .toList();
         recommendedJobs.assignAll(jobs);
+      } else {
+        recommendedJobs.clear();
       }
     } catch (e) {
       print('Load recommended jobs error: $e');
+      recommendedJobs.clear();
     }
   }
 
   // Load application statistics
   Future<void> loadApplicationStats() async {
     try {
-      final response = await _profileRepository.getApplicationStats();
+      if (currentStudent.value == null) return;
 
-      if (response['success'] == true) {
-        totalApplications.value = response['total'] ?? 0;
-        activeApplications.value = response['active'] ?? 0;
-        shortlistedApplications.value = response['shortlisted'] ?? 0;
+      // Load student applications to calculate statistics locally
+      final response = await _jobRepository.getStudentApplications(
+        studentId: currentStudent.value!.userId,
+        limit: 100, // Get enough to calculate stats
+      );
+
+      if (response['success'] == true && response['data'] != null) {
+        final applications = response['data']['applications'] as List? ?? [];
+
+        totalApplications.value = applications.length;
+        activeApplications.value = applications
+            .where(
+              (app) =>
+                  (app['status'] ?? '').toLowerCase() == 'applied' ||
+                  (app['status'] ?? '').toLowerCase() == 'under_review',
+            )
+            .length;
+        shortlistedApplications.value = applications
+            .where(
+              (app) => (app['status'] ?? '').toLowerCase() == 'shortlisted',
+            )
+            .length;
+      } else {
+        totalApplications.value = 0;
+        activeApplications.value = 0;
+        shortlistedApplications.value = 0;
       }
     } catch (e) {
       print('Load application stats error: $e');
+      totalApplications.value = 0;
+      activeApplications.value = 0;
+      shortlistedApplications.value = 0;
     }
   }
 
@@ -275,8 +307,6 @@ class DashboardController extends GetxController {
         return Colors.red;
       case ApplicationStatus.WITHDRAWN:
         return Colors.grey;
-      default:
-        return Colors.grey;
     }
   }
 
@@ -293,8 +323,6 @@ class DashboardController extends GetxController {
         return 'Rejected';
       case ApplicationStatus.WITHDRAWN:
         return 'Withdrawn';
-      default:
-        return 'Unknown';
     }
   }
 }

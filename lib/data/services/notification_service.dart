@@ -52,20 +52,31 @@ class NotificationService extends GetxService {
         >();
 
     if (androidImplementation != null) {
-      await androidImplementation.requestNotificationsPermission();
+      final granted = await androidImplementation
+          .requestNotificationsPermission();
+      // Remove incorrect await - granted is already a bool
+      if (granted != null && granted) {
+        print('Android notification permission granted');
+      }
     }
-    // iOS permissions are commented out for now
-    // final iosImplementation = _flutterLocalNotificationsPlugin
-    //     .resolvePlatformSpecificImplementation<
-    //     IOSFlutterLocalNotificationsPlugin
-    // >();
-    // if (iosImplementation != null) {
-    //   await iosImplementation.requestPermissions(
-    //     alert: true,
-    //     badge: true,
-    //     sound: true,
-    //   );
-    // }
+
+    // iOS permissions
+    final iosImplementation = _flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+
+    if (iosImplementation != null) {
+      final granted = await iosImplementation.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      // Remove incorrect await - granted is already a bool
+      if (granted != null && granted) {
+        print('iOS notification permission granted');
+      }
+    }
   }
 
   void _onNotificationTapped(NotificationResponse response) {
@@ -141,6 +152,41 @@ class NotificationService extends GetxService {
       details,
       payload: payload,
     );
+  }
+
+  // Add the missing showLocalNotification method
+  Future<void> showLocalNotification({
+    required String title,
+    required String body,
+    String? payload,
+    int id = 0,
+  }) async {
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'default_channel',
+        'Default',
+        channelDescription: 'Default notification channel',
+        importance: Importance.high,
+        priority: Priority.high,
+      );
+
+      const iosDetails = DarwinNotificationDetails();
+
+      const notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      await _flutterLocalNotificationsPlugin.show(
+        id,
+        title,
+        body,
+        notificationDetails,
+        payload: payload,
+      );
+    } catch (e) {
+      print('Show local notification error: $e');
+    }
   }
 
   // Show job alert notification

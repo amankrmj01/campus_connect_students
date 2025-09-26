@@ -2,6 +2,7 @@
 import 'package:dio/dio.dart' as dio;
 import 'package:get/get.dart' hide Response, MultipartFile, FormData;
 
+import '../mock_data/job_mock_data.dart';
 import 'api_config.dart';
 import 'mock_api_service.dart';
 import 'storage_service.dart';
@@ -633,6 +634,8 @@ class ApiService extends GetxService {
   // Get current cancel token
   dio.CancelToken get cancelToken => _cancelToken;
 
+  bool get isUsingMockData => ApiConfig.USE_MOCK_DATA;
+
   @override
   void onClose() {
     // Cancel all requests when service is disposed
@@ -709,6 +712,10 @@ class ApiService extends GetxService {
 
   // Job APIs
   Future<Map<String, dynamic>> getJobs({
+    required double cgpa,
+    required String branch,
+    required String degreeType,
+    required int graduationYear,
     int page = 1,
     int limit = 10,
     String? search,
@@ -718,18 +725,22 @@ class ApiService extends GetxService {
   }) async {
     if (ApiConfig.USE_MOCK_DATA) {
       return await MockApiService.getJobs(
+        cgpa: cgpa,
+        branch: branch,
+        degreeType: degreeType,
+        graduationYear: graduationYear,
         page: page,
         limit: limit,
-        search: search,
-        type: type,
-        location: location,
-        company: company,
       );
     }
 
     return await get(
       '/jobs',
       queryParameters: {
+        'cgpa': cgpa,
+        'branch': branch,
+        'degreeType': degreeType,
+        'graduationYear': graduationYear,
         'page': page,
         'limit': limit,
         if (search != null) 'search': search,
@@ -742,7 +753,18 @@ class ApiService extends GetxService {
 
   Future<Map<String, dynamic>> getJobById(String jobId) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.getJobById(jobId);
+      // Use JobMockData directly since getJobById doesn't exist in MockApiService
+      await Future.delayed(Duration(milliseconds: 500));
+      try {
+        final jobData = JobMockData.getJobById(jobId);
+        return {
+          'success': true,
+          'message': 'Job fetched successfully',
+          'data': jobData,
+        };
+      } catch (e) {
+        return {'success': false, 'message': 'Job not found'};
+      }
     }
 
     return await get('/jobs/$jobId');
@@ -750,7 +772,18 @@ class ApiService extends GetxService {
 
   Future<Map<String, dynamic>> getJobFilters() async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.getJobFilters();
+      // Provide mock job filters
+      await Future.delayed(Duration(milliseconds: 300));
+      return {
+        'success': true,
+        'message': 'Filters fetched successfully',
+        'data': {
+          'jobTypes': ['Full-time', 'Internship', 'Part-time'],
+          'locations': ['Bangalore', 'Mumbai', 'Delhi', 'Hyderabad', 'Chennai'],
+          'companies': ['TCS', 'Infosys', 'Wipro', 'Accenture', 'IBM'],
+          'industries': ['IT', 'Finance', 'Healthcare', 'Manufacturing'],
+        },
+      };
     }
 
     return await get('/jobs/filters');
@@ -762,7 +795,14 @@ class ApiService extends GetxService {
     Map<String, dynamic> applicationData,
   ) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.applyForJob(jobId, applicationData);
+      // Use submitJobApplication from MockApiService
+      return await MockApiService.submitJobApplication(
+        jobId: jobId,
+        candidateId: applicationData['candidateId'] ?? 'mock_user_id',
+        answers: List<Map<String, dynamic>>.from(
+          applicationData['answers'] ?? [],
+        ),
+      );
     }
 
     return await post(
@@ -778,8 +818,9 @@ class ApiService extends GetxService {
     String? status,
   }) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.getApplications(
-        studentId,
+      // Use getStudentApplications from MockApiService
+      return await MockApiService.getStudentApplications(
+        studentId: studentId,
         page: page,
         limit: limit,
         status: status,
@@ -799,7 +840,21 @@ class ApiService extends GetxService {
 
   Future<Map<String, dynamic>> getApplicationById(String applicationId) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.getApplicationById(applicationId);
+      // Provide mock application details
+      await Future.delayed(Duration(milliseconds: 400));
+      return {
+        'success': true,
+        'message': 'Application fetched successfully',
+        'data': {
+          'applicationId': applicationId,
+          'status': 'APPLIED',
+          'appliedAt': DateTime.now()
+              .subtract(Duration(days: 2))
+              .toIso8601String(),
+          'jobTitle': 'Software Developer',
+          'companyName': 'Mock Company',
+        },
+      };
     }
 
     return await get('/applications/$applicationId');
@@ -807,7 +862,11 @@ class ApiService extends GetxService {
 
   Future<Map<String, dynamic>> withdrawApplication(String applicationId) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.withdrawApplication(applicationId);
+      // Use updateApplicationStatus to withdraw
+      return await MockApiService.updateApplicationStatus(
+        applicationId: applicationId,
+        status: 'WITHDRAWN',
+      );
     }
 
     return await delete('/applications/$applicationId');
@@ -815,7 +874,26 @@ class ApiService extends GetxService {
 
   Future<Map<String, dynamic>> getUpcomingInterviews(String studentId) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.getUpcomingInterviews(studentId);
+      // Provide mock upcoming interviews
+      await Future.delayed(Duration(milliseconds: 400));
+      return {
+        'success': true,
+        'message': 'Upcoming interviews fetched successfully',
+        'data': {
+          'interviews': [
+            {
+              'id': 'interview_1',
+              'jobTitle': 'Software Developer',
+              'companyName': 'Tech Corp',
+              'scheduledAt': DateTime.now()
+                  .add(Duration(days: 3))
+                  .toIso8601String(),
+              'type': 'Technical',
+              'location': 'Virtual',
+            },
+          ],
+        },
+      };
     }
 
     return await get(
@@ -976,10 +1054,37 @@ class ApiService extends GetxService {
 
   Future<Map<String, dynamic>> deleteAccount(String studentId) async {
     if (ApiConfig.USE_MOCK_DATA) {
-      return await MockApiService.deleteAccount(studentId);
+      // Provide mock account deletion
+      await Future.delayed(Duration(milliseconds: 800));
+      return {'success': true, 'message': 'Account deleted successfully'};
     }
 
     return await delete('/users/$studentId');
+  }
+
+  // Job Application Questions API
+  Future<Map<String, dynamic>> getJobApplicationQuestions(String jobId) async {
+    if (ApiConfig.USE_MOCK_DATA) {
+      // Use JobMockData to get application questions
+      await Future.delayed(Duration(milliseconds: 400));
+      try {
+        final jobData = JobMockData.getJobById(jobId);
+        final customForm = jobData['customForm'] as Map<String, dynamic>? ?? {};
+        return {
+          'success': true,
+          'message': 'Application questions fetched successfully',
+          'data': {
+            'questions': customForm['questions'] ?? [],
+            'additionalLinks': customForm['additionalLinks'] ?? [],
+            'instructions': customForm['instructions'] ?? '',
+          },
+        };
+      } catch (e) {
+        return {'success': false, 'message': 'Job not found'};
+      }
+    }
+
+    return await get('/jobs/$jobId/application-questions');
   }
 }
 

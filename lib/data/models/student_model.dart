@@ -5,9 +5,13 @@ class Student {
   final String name;
   final String email;
   final String regNumber;
+  final String? studentId;
   final String branch;
   final String degreeType;
   final String collegeName;
+  final double cgpa;
+  final int graduationYear;
+  final int currentBacklogs;
   final String? profilePicture;
   final AcademicDetails? academicDetails;
   final List<WorkExperience> workExperience;
@@ -24,9 +28,13 @@ class Student {
     required this.name,
     required this.email,
     required this.regNumber,
+    this.studentId,
     required this.branch,
     required this.degreeType,
     required this.collegeName,
+    required this.cgpa,
+    required this.graduationYear,
+    required this.currentBacklogs,
     this.profilePicture,
     this.academicDetails,
     required this.workExperience,
@@ -45,9 +53,13 @@ class Student {
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       regNumber: json['regNumber'] ?? '',
+      studentId: json['studentId'],
       branch: json['branch'] ?? '',
       degreeType: json['degreeType'] ?? '',
       collegeName: json['collegeName'] ?? '',
+      cgpa: (json['cgpa'] ?? 0.0).toDouble(),
+      graduationYear: json['graduationYear'] ?? DateTime.now().year,
+      currentBacklogs: json['currentBacklogs'] ?? 0,
       profilePicture: json['profilePicture'],
       academicDetails: json['academicDetails'] != null
           ? AcademicDetails.fromJson(json['academicDetails'])
@@ -69,9 +81,7 @@ class Student {
       isActive: json['isActive'] ?? true,
       isBlacklisted: json['isBlacklisted'] ?? false,
       profileCompleted: json['profileCompleted'] ?? false,
-      createdAt: DateTime.parse(
-        json['createdAt'] ?? DateTime.now().toIso8601String(),
-      ),
+      createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
     );
   }
 
@@ -81,9 +91,13 @@ class Student {
       'name': name,
       'email': email,
       'regNumber': regNumber,
+      'studentId': studentId,
       'branch': branch,
       'degreeType': degreeType,
       'collegeName': collegeName,
+      'cgpa': cgpa,
+      'graduationYear': graduationYear,
+      'currentBacklogs': currentBacklogs,
       'profilePicture': profilePicture,
       'academicDetails': academicDetails?.toJson(),
       'workExperience': workExperience.map((item) => item.toJson()).toList(),
@@ -99,6 +113,14 @@ class Student {
 }
 
 class AcademicDetails {
+  final String? degree;
+  final String? branch;
+  final String? college;
+  final String? university;
+  final String? department;
+  final int? year;
+  final int? semester;
+  final String? batch;
   final double? tenthMarks;
   final double? twelfthMarks;
   final double? cgpa;
@@ -106,6 +128,14 @@ class AcademicDetails {
   final int? graduationYear;
 
   AcademicDetails({
+    this.degree,
+    this.branch,
+    this.college,
+    this.university,
+    this.department,
+    this.year,
+    this.semester,
+    this.batch,
     this.tenthMarks,
     this.twelfthMarks,
     this.cgpa,
@@ -115,6 +145,14 @@ class AcademicDetails {
 
   factory AcademicDetails.fromJson(Map<String, dynamic> json) {
     return AcademicDetails(
+      degree: json['degree'],
+      branch: json['branch'],
+      college: json['college'],
+      university: json['university'],
+      department: json['department'],
+      year: json['year'],
+      semester: json['semester'],
+      batch: json['batch'],
       tenthMarks: json['tenthMarks']?.toDouble(),
       twelfthMarks: json['twelfthMarks']?.toDouble(),
       cgpa: json['cgpa']?.toDouble(),
@@ -125,6 +163,14 @@ class AcademicDetails {
 
   Map<String, dynamic> toJson() {
     return {
+      'degree': degree,
+      'branch': branch,
+      'college': college,
+      'university': university,
+      'department': department,
+      'year': year,
+      'semester': semester,
+      'batch': batch,
       'tenthMarks': tenthMarks,
       'twelfthMarks': twelfthMarks,
       'cgpa': cgpa,
@@ -155,7 +201,9 @@ class WorkExperience {
       role: json['role'] ?? '',
       duration: json['duration'] ?? '',
       description: json['description'] ?? '',
-      skills: List<String>.from(json['skills'] ?? []),
+      skills:
+          (json['skills'] as List?)?.map((item) => item.toString()).toList() ??
+          [],
     );
   }
 

@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../config.dart';
+import '../../presentation/jobs/views/job_application_form.screen.dart';
 import '../../presentation/screens.dart';
 import 'bindings/controllers/controllers_bindings.dart';
+import 'bindings/job_application_form.binding.dart';
 import 'routes.dart';
 
 class EnvironmentsBadge extends StatelessWidget {
   final Widget child;
 
-  const EnvironmentsBadge({required this.child});
+  const EnvironmentsBadge({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +30,11 @@ class EnvironmentsBadge extends StatelessWidget {
 class Nav {
   static List<GetPage> routes = [
     GetPage(
+      name: Routes.AUTH,
+      page: () => const AuthScreen(),
+      binding: AuthControllerBinding(),
+    ),
+    GetPage(
       name: Routes.HOME,
       page: () => const MainNavigationScreen(),
       bindings: [
@@ -45,14 +52,14 @@ class Nav {
       binding: DashboardControllerBinding(),
     ),
     GetPage(
-      name: Routes.PROFILE,
-      page: () => const ProfileScreen(),
-      binding: ProfileControllerBinding(),
-    ),
-    GetPage(
       name: Routes.JOBS,
       page: () => const JobsScreen(),
       binding: JobsControllerBinding(),
+    ),
+    GetPage(
+      name: Routes.JOB_APPLICATION,
+      page: () => const JobApplicationFormScreen(),
+      binding: JobApplicationFormBinding(),
     ),
     GetPage(
       name: Routes.APPLICATIONS,
@@ -65,14 +72,14 @@ class Nav {
       binding: GroupsControllerBinding(),
     ),
     GetPage(
+      name: Routes.PROFILE,
+      page: () => const ProfileScreen(),
+      binding: ProfileControllerBinding(),
+    ),
+    GetPage(
       name: Routes.SETTINGS,
       page: () => const SettingsScreen(),
       binding: SettingsControllerBinding(),
-    ),
-    GetPage(
-      name: Routes.AUTH,
-      page: () => const AuthScreen(),
-      binding: AuthControllerBinding(),
     ),
   ];
 }
